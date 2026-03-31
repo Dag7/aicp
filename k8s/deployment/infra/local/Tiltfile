@@ -1,0 +1,35 @@
+load('../../../../utils/tilt/k8s/pvc.utils.tilt', 'clear_pvc')
+load('../../../../utils/tilt/k8s/namespace.utils.tilt', 'create_namespace')
+
+def setup_local_infra():
+    # Namespace
+    k8s_yaml('k8s/deployment/infra/local/namespace.yaml')
+
+    # Clear PVCs for fresh start
+    clear_pvc('postgresql-data', 'aicp', {'app': 'postgresql'})
+    clear_pvc('redis-data', 'aicp', {'app': 'redis'})
+
+    # PostgreSQL
+    k8s_yaml('k8s/deployment/infra/local/postgresql.yaml')
+    k8s_resource('postgresql',
+        objects=['postgresql-init:configmap', 'postgresql-data:persistentvolumeclaim'],
+        port_forwards=['5432:5432'],
+        labels=['01_infra'],
+    )
+
+    # Redis
+    k8s_yaml('k8s/deployment/infra/local/redis.yaml')
+    k8s_resource('redis',
+        objects=['redis-data:persistentvolumeclaim'],
+        port_forwards=['6379:6379'],
+        labels=['01_infra'],
+    )
+
+    # pgAdmin
+    k8s_yaml('k8s/deployment/infra/local/pgadmin.yaml')
+    k8s_resource('pgadmin',
+        objects=['pgadmin-servers:configmap', 'pgadmin-pgpass:configmap'],
+        port_forwards=['5050:80'],
+        resource_deps=['postgresql'],
+        labels=['01_infra_dashboard'],
+    )

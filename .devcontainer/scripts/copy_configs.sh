@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Function to copy configuration files from host to container
+copy_host_configs() {
+    echo "Copying host configuration files..."
+
+    # Create necessary directories
+    mkdir -p ~/.kube
+
+    # Function to copy file/directory with error handling
+    copy_config() {
+        local source_path="$1"
+        local target_path="$2"
+        local description="$3"
+
+        if [ -e "$source_path" ]; then
+            echo "  Copying $description..."
+            if [ -d "$source_path" ]; then
+                cp -r "$source_path" "$target_path" 2>/dev/null || echo "  Warning: Failed to copy $description"
+            else
+                cp "$source_path" "$target_path" 2>/dev/null || echo "  Warning: Failed to copy $description"
+            fi
+        else
+            echo "  Skipping $description (not found)"
+        fi
+    }
+
+    # Copy configurations
+    copy_config "/tmp/host/.gitconfig" ~/ "Git configuration"
+    copy_config "/tmp/host/.kube" ~/.kube "Kubectl configuration"
+
+    # Set proper permissions
+    chmod 600 ~/.kube/config 2>/dev/null || true
+
+    echo "Configuration files copied successfully."
+}

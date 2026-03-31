@@ -1,0 +1,8 @@
+.git
+node_modules
+sdk/typescript/node_modules
+sdk/python/.venv
+**/*.test.go
+**/testdata
+.devcontainer
+docs

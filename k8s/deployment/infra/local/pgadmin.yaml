@@ -1,0 +1,126 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgadmin-servers
+  namespace: aicp
+  labels:
+    app: pgadmin
+    app.kubernetes.io/part-of: aicp
+data:
+  servers.json: |
+    {
+      "Servers": {
+        "1": {
+          "Name": "AICP Local",
+          "Group": "Servers",
+          "Host": "postgresql.aicp.svc.cluster.local",
+          "Port": 5432,
+          "MaintenanceDB": "aicp",
+          "Username": "aicp",
+          "SSLMode": "disable",
+          "PassFile": "/pgadmin4/pgpass"
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgadmin-pgpass
+  namespace: aicp
+  labels:
+    app: pgadmin
+    app.kubernetes.io/part-of: aicp
+data:
+  pgpass: |
+    postgresql.aicp.svc.cluster.local:5432:aicp:aicp:aicp_dev
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: aicp
+  labels:
+    app: pgadmin
+    app.kubernetes.io/part-of: aicp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+        app.kubernetes.io/part-of: aicp
+    spec:
+      initContainers:
+        - name: fix-pgpass-permissions
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              cp /pgpass-config/pgpass /pgadmin4/pgpass
+              chmod 600 /pgadmin4/pgpass
+          volumeMounts:
+            - name: pgpass-config
+              mountPath: /pgpass-config
+            - name: pgpass-volume
+              mountPath: /pgadmin4
+      containers:
+        - name: pgadmin
+          image: dpage/pgadmin4
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: "admin@aicp.dev"
+            - name: PGADMIN_DEFAULT_PASSWORD
+              value: "admin"
+            - name: PGADMIN_CONFIG_SERVER_MODE
+              value: "False"
+          volumeMounts:
+            - name: pgadmin-servers
+              mountPath: /pgadmin4/servers.json
+              subPath: servers.json
+            - name: pgpass-volume
+              mountPath: /pgadmin4/pgpass
+              subPath: pgpass
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: pgadmin-servers
+          configMap:
+            name: pgadmin-servers
+        - name: pgpass-config
+          configMap:
+            name: pgadmin-pgpass
+        - name: pgpass-volume
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: aicp
+  labels:
+    app: pgadmin
+    app.kubernetes.io/part-of: aicp
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+  selector:
+    app: pgadmin

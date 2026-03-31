@@ -1,0 +1,33 @@
+def go_service(name, context='.', dockerfile='deploy/docker/Dockerfile.server', build_args={}, target=''):
+    """Build a Go service Docker image for Tilt.
+
+    Args:
+        name: Docker image name (e.g. 'aicp-server').
+        context: Build context directory.
+        dockerfile: Path to the Dockerfile relative to context.
+        build_args: Additional Docker build arguments.
+        target: Optional multi-stage target name.
+    """
+    common_args = {
+        'BUILDKIT_INLINE_CACHE': '1',
+    }
+
+    # Merge args (user args override common)
+    merged_args = dict(common_args)
+    merged_args.update(build_args)
+
+    if target:
+        docker_build(
+            name,
+            context=context,
+            dockerfile=dockerfile,
+            build_args=merged_args,
+            target=target,
+        )
+    else:
+        docker_build(
+            name,
+            context=context,
+            dockerfile=dockerfile,
+            build_args=merged_args,
+        )

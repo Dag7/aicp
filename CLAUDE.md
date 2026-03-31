@@ -34,18 +34,23 @@ sdk/python/      Python client SDK (aicp on PyPI)
 spec/            OpenAPI 3.1 + JSON Schema (protocol source of truth)
 deploy/          Docker, Helm charts, Grafana dashboards
 docs/            Whitepaper, protocol spec, Docusaurus site
+.devcontainer/   Dev environment (Dockerfile, k3d config, scripts)
+k8s/             Local K8s infra manifests (PostgreSQL, Redis, pgAdmin)
+utils/tilt/      Tilt utility functions (Go builds, Helm, namespaces)
 ```
 
 ## Tech Stack
 
-- **Server**: Go 1.22+ with chi router
+- **Server**: Go 1.26+ with chi router
 - **Database**: PostgreSQL 16+ via pgx driver + sqlc for type-safe queries
 - **Cache**: Redis 7+ via go-redis (rate limiting, sessions, pub/sub, nonce cache)
 - **Crypto**: Go stdlib crypto/ed25519, crypto/sha256 + go-jose/v4 for JWS
+- **Operator**: K8s Operator SDK v1.42.2 (Go 1.24, controller-runtime v0.21.0)
 - **Testing**: Go testing + testify + testcontainers-go (real PG + Redis in tests)
 - **Linting**: golangci-lint
 - **Build**: Taskfile (task runner)
 - **CI/CD**: GitHub Actions
+- **Local Dev**: Devcontainer + k3d + Tilt (live reload, local K8s)
 
 ## Build Commands
 
@@ -77,6 +82,90 @@ task sdk:py:test    # Test Python SDK
 # Helm
 task helm:lint      # Lint Helm chart
 task all            # Build + test + lint everything
+```
+
+## Development Environment (k3d + Tilt)
+
+The project uses a devcontainer with k3d (k3s-in-Docker) and Tilt for local Kubernetes development. This follows the same pattern as the doorz project.
+
+### Prerequisites
+- Docker Desktop
+- VS Code with Remote Containers extension
+
+### Getting Started
+
+1. **Open in devcontainer**: VS Code will auto-detect `.devcontainer/` and prompt to reopen
+2. **Create k3d cluster** (runs automatically via `post_cmd.sh`, or manually):
+   ```bash
+   k3d cluster create --config .devcontainer/k3s/aicp-cluster.config.yaml \
+     --registry-config .devcontainer/k3s/aicp-cluster.registries.yaml
+   ```
+3. **Start Tilt**:
+   ```bash
+   tilt up
+   ```
+4. **Access Tilt dashboard**: http://localhost:10350
+
+### What Tilt Deploys
+
+| Resource | Label | Port Forward | Description |
+|----------|-------|--------------|-------------|
+| `postgresql` | 01_infra | 5432 | PostgreSQL 17 with uuid-ossp + pgcrypto |
+| `redis` | 01_infra | 6379 | Redis 7 Alpine with AOF persistence |
+| `pgadmin` | 01_infra_dashboard | 5050 | pgAdmin4 (admin@aicp.dev / admin) |
+| `db-migrate` | 00_setup | - | golang-migrate runs schema migrations |
+| `aicp-server` | 00_server | 8080, 9090 | AICP protocol server (Helm chart) |
+| `operator-crds` | 00_operator | - | AICPCluster + AICPValidator CRDs |
+| `operator-rbac` | 00_operator | - | Operator RBAC (roles, bindings, SA) |
+| `aicp-operator` | 00_operator | - | Operator controller-manager |
+| `apply-sample-cr` | 00_operator | - | Sample CRs (manual trigger in Tilt UI) |
+
+### k3d Cluster Management
+
+```bash
+# Stop cluster (preserves state)
+.devcontainer/k3s/stop-cluster.sh
+
+# Delete cluster (destroys everything)
+.devcontainer/k3s/clean-cluster.sh
+
+# Connect kubectl from host machine (outside devcontainer)
+./scripts/setup-k3d-kubectl.sh
+```
+
+### Key Dev URLs
+
+- **AICP Server**: http://localhost:8080
+- **Metrics**: http://localhost:9090/metrics
+- **Health**: http://localhost:8080/health
+- **pgAdmin**: http://localhost:5050
+- **Tilt Dashboard**: http://localhost:10350
+
+### Dev Environment Architecture
+
+```
+.devcontainer/
+  Dockerfile         Dev image: kubectl, helm, k3d, tilt, operator-sdk, golangci-lint
+  devcontainer.json  VS Code config (4 CPUs, 8GB RAM, host network, Docker socket)
+  scripts/           init_host.sh, post_cmd.sh, copy_configs.sh, zsh-prompt.sh
+  k3s/               Cluster config, registries, stop/clean scripts
+
+k8s/deployment/infra/local/
+  namespace.yaml     aicp namespace
+  postgresql.yaml    PG 17 Deployment + PVC + init SQL + Service
+  redis.yaml         Redis 7 Deployment + PVC + Service
+  pgadmin.yaml       pgAdmin4 with pre-configured AICP connection
+  Tiltfile           Local infra orchestration (loaded by root Tiltfile)
+
+utils/tilt/
+  go.utils.tilt      Go Docker build helper
+  k8s/
+    namespace.utils.tilt  Namespace creation
+    pvc.utils.tilt        PVC cleanup for dev
+    helm.utils.tilt       Helm dependency management
+
+Tiltfile             Root orchestrator: infra → migrations → server → operator
+.tiltignore          Excludes .git, node_modules, docs, tests from Tilt watches
 ```
 
 ## Project Conventions

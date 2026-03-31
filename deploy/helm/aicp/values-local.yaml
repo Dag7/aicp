@@ -1,0 +1,60 @@
+# Local development values (k3d + Tilt)
+# Overrides values.yaml for local dev environment
+
+# Use local images built by Tilt (no registry pull)
+image:
+  repository: aicp-server
+  tag: latest
+  pullPolicy: Never
+
+# Single replica for local dev
+replicaCount: 1
+
+# Disable autoscaling and disruption budget
+autoscaling:
+  enabled: false
+podDisruptionBudget:
+  enabled: false
+
+# Connect to local infra (deployed by Tilt as plain K8s manifests)
+postgresql:
+  internal: false
+  externalUrl: "postgres://aicp:aicp_dev@postgresql.aicp.svc.cluster.local:5432/aicp?sslmode=disable"
+
+redis:
+  internal: false
+  externalUrl: "redis://redis.aicp.svc.cluster.local:6379"
+
+# Server tuning for dev
+server:
+  logLevel: debug
+  logFormat: text
+
+# Disable validator (use operator for validator management)
+validator:
+  enabled: false
+
+# Disable production features
+ingress:
+  enabled: false
+serviceMonitor:
+  enabled: false
+monitoring:
+  prometheusRules: false
+networkPolicy:
+  enabled: false
+
+# Relax security context for local dev
+podSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 0
+securityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL

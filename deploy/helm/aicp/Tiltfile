@@ -1,0 +1,20 @@
+# Load utilities
+load('../../../utils/tilt/k8s/helm.utils.tilt', 'ensure_helm_deps')
+
+def setup_aicp_server():
+    """Setup the AICP server via Helm chart.
+
+    Returns the rendered YAML for k8s_yaml().
+    """
+    chart_path = "deploy/helm/aicp"
+    ensure_helm_deps(chart_path)
+
+    return helm(
+        "./%s" % chart_path,
+        name="aicp",
+        namespace="aicp",
+        values=[
+            "./%s/values.yaml" % chart_path,
+            "./%s/values-local.yaml" % chart_path,
+        ],
+    )
