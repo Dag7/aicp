@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aicp.dev/schemas/onboarding.schema.json",
+  "title": "AICP Onboarding State",
+  "description": "Represents the current state of an agent-service onboarding session as it progresses through protocol phases.",
+  "type": "object",
+  "required": ["session_id", "phase", "agent_did", "service_did", "started_at", "updated_at"],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Unique identifier for this onboarding session."
+    },
+    "phase": {
+      "$ref": "#/$defs/OnboardingPhase"
+    },
+    "agent_did": {
+      "type": "string",
+      "description": "DID of the agent being onboarded."
+    },
+    "service_did": {
+      "type": "string",
+      "description": "DID of the service performing the onboarding."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the onboarding session was initiated."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the most recent state transition."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when this onboarding session expires if not completed."
+    },
+    "failed_reason": {
+      "type": "string",
+      "description": "Human-readable explanation when the session enters the 'failed' phase."
+    }
+  },
+  "additionalProperties": false,
+  "if": {
+    "properties": { "phase": { "const": "failed" } }
+  },
+  "then": {
+    "required": ["failed_reason"]
+  },
+  "$defs": {
+    "OnboardingPhase": {
+      "type": "string",
+      "enum": [
+        "initiated",
+        "identity_presented",
+        "capabilities_negotiated",
+        "payment_authorized",
+        "provisioned",
+        "failed"
+      ],
+      "description": "The current phase of the onboarding lifecycle."
+    }
+  }
+}

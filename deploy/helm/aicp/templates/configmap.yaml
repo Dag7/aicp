@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aicp.fullname" . }}-config
+  labels:
+    {{- include "aicp.labels" . | nindent 4 }}
+data:
+  AICP_LOG_LEVEL: {{ .Values.server.logLevel | default "info" | quote }}
+  AICP_LOG_FORMAT: {{ .Values.server.logFormat | default "json" | quote }}
+  {{- if .Values.server.serviceDID }}
+  AICP_SERVICE_DID: {{ .Values.server.serviceDID | quote }}
+  {{- end }}
+  {{- if .Values.server.allowedOrigins }}
+  AICP_ALLOWED_ORIGINS: {{ join "," .Values.server.allowedOrigins | quote }}
+  {{- end }}
+  AICP_RATE_LIMIT_MAX: {{ .Values.server.rateLimitMax | default 100 | quote }}
+  AICP_RATE_LIMIT_WINDOW: {{ .Values.server.rateLimitWindow | default "1m" | quote }}

@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1
+
+# ============================================================================
+# Stage 1: Build the Go binaries
+# ============================================================================
+FROM golang:1.26-alpine AS builder
+
+RUN apk add --no-cache ca-certificates tzdata git
+
+WORKDIR /src
+
+# Copy go.mod/go.sum first for layer caching
+COPY server/go.mod server/go.sum ./
+RUN go mod download && go mod verify
+
+# Copy the full source tree
+COPY server/ ./
+
+# Build arguments for versioning
+ARG VERSION=dev
+ARG COMMIT_SHA=unknown
+ARG BUILD_TIME=unknown
+
+ENV CGO_ENABLED=0
+ENV GOFLAGS="-trimpath"
+
+# Build the server binary
+RUN go build \
+    -ldflags="-s -w \
+        -X main.version=${VERSION} \
+        -X main.commitSHA=${COMMIT_SHA} \
+        -X main.buildTime=${BUILD_TIME}" \
+    -o /out/aicp-server \
+    ./cmd/aicp-server/main.go
+
+# Build the CLI binary
+RUN go build \
+    -ldflags="-s -w \
+        -X main.version=${VERSION} \
+        -X main.commitSHA=${COMMIT_SHA} \
+        -X main.buildTime=${BUILD_TIME}" \
+    -o /out/aicp \
+    ./cmd/aicp/
+
+# ============================================================================
+# Stage 2: Minimal production image
+# ============================================================================
+FROM scratch
+
+# Import CA certificates and timezone data from builder
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+
+# Copy the compiled binaries
+COPY --from=builder /out/aicp-server /usr/local/bin/aicp-server
+COPY --from=builder /out/aicp /usr/local/bin/aicp
+
+# API (8080) and metrics/debug (9090)
+EXPOSE 8080 9090
+
+ENTRYPOINT ["/usr/local/bin/aicp-server"]

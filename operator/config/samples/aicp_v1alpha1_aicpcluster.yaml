@@ -1,0 +1,30 @@
+apiVersion: aicp.aicp.dev/v1alpha1
+kind: AICPCluster
+metadata:
+  labels:
+    app.kubernetes.io/name: aicp-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: aicp-production
+spec:
+  replicas: 3
+  validatorCount: 3
+  image: "ghcr.io/aicp-protocol/aicp-server:latest"
+  serviceDID: "did:aicp:myservice123"
+  postgresql:
+    host: postgres.default.svc.cluster.local
+    port: 5432
+    database: aicp
+    secretRef:
+      name: aicp-pg-credentials
+  redis:
+    address: redis.default.svc.cluster.local:6379
+    secretRef:
+      name: aicp-redis-credentials
+  resources:
+    cpuRequest: "250m"
+    memoryRequest: "256Mi"
+    cpuLimit: "1"
+    memoryLimit: "1Gi"
+  allowedOrigins:
+    - "https://app.aicp.dev"
+    - "https://dashboard.aicp.dev"

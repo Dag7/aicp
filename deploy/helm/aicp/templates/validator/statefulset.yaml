@@ -1,0 +1,166 @@
+{{- if .Values.validator.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "aicp.fullname" . }}-validator
+  labels:
+    {{- include "aicp.validatorLabels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "aicp.fullname" . }}-validator-headless
+  replicas: {{ .Values.validator.replicaCount }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "aicp.validatorSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "aicp.validatorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "aicp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: aicp-validator
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.validator.image.repository }}:{{ .Values.validator.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.validator.image.pullPolicy }}
+          args:
+            - "--mode=validator"
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.ledger.grpcPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.server.metricsPort }}
+              protocol: TCP
+          env:
+            # Server (validators share server config for metrics)
+            - name: AICP_SERVER_HOST
+              value: "0.0.0.0"
+            - name: AICP_SERVER_METRICS_PORT
+              value: {{ .Values.server.metricsPort | quote }}
+            - name: AICP_SERVER_LOG_LEVEL
+              value: {{ .Values.server.logLevel | quote }}
+            - name: AICP_SERVER_LOG_FORMAT
+              value: {{ .Values.server.logFormat | quote }}
+            # Database
+            {{- if .Values.existingSecret }}
+            - name: AICP_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: database-url
+            {{- else }}
+            - name: AICP_DATABASE_URL
+              value: {{ include "aicp.databaseUrl" . | quote }}
+            {{- end }}
+            - name: AICP_DATABASE_MAX_OPEN_CONNS
+              value: {{ .Values.postgresql.maxOpenConns | quote }}
+            - name: AICP_DATABASE_MAX_IDLE_CONNS
+              value: {{ .Values.postgresql.maxIdleConns | quote }}
+            # Redis
+            {{- if .Values.existingSecret }}
+            - name: AICP_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: redis-url
+            {{- else }}
+            - name: AICP_REDIS_URL
+              value: {{ include "aicp.redisUrl" . | quote }}
+            {{- end }}
+            # Ledger
+            - name: AICP_LEDGER_VALIDATOR_DID
+              value: {{ .Values.ledger.validatorDID | quote }}
+            - name: AICP_LEDGER_VALIDATOR_KEY_PATH
+              value: {{ .Values.ledger.validatorKeyPath | quote }}
+            - name: AICP_LEDGER_BLOCK_INTERVAL
+              value: {{ .Values.ledger.blockInterval | quote }}
+            - name: AICP_LEDGER_MAX_ENTRIES_PER_BLOCK
+              value: {{ .Values.ledger.maxEntriesPerBlock | quote }}
+            - name: AICP_LEDGER_CONSENSUS_TIMEOUT
+              value: {{ .Values.ledger.consensusTimeout | quote }}
+            - name: AICP_LEDGER_GRPC_PORT
+              value: {{ .Values.ledger.grpcPort | quote }}
+            {{- if .Values.ledger.peerAddresses }}
+            - name: AICP_LEDGER_PEER_ADDRESSES
+              value: {{ .Values.ledger.peerAddresses | quote }}
+            {{- else }}
+            # Auto-discover peers via headless service DNS
+            - name: AICP_LEDGER_PEER_ADDRESSES
+              value: ""
+            {{- end }}
+            # Pod identity (used for per-validator key derivation)
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.validator.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data/validator
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.validator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.validator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.validator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.validator.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "aicp.validatorSelectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.validator.persistence.accessModes | nindent 10 }}
+        {{- if .Values.validator.persistence.storageClass }}
+        storageClassName: {{ .Values.validator.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.validator.persistence.size }}
+  {{- end }}
+{{- end }}

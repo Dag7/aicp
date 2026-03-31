@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aicp.dev/schemas/payment-token.schema.json",
+  "title": "AICP Payment Token",
+  "description": "Claims structure for the JWS payload of an AICP payment token, authorizing a financial transaction between agent and service.",
+  "type": "object",
+  "required": ["jti", "iss", "sub", "aud", "iat", "exp", "aicp:payment"],
+  "properties": {
+    "jti": {
+      "type": "string",
+      "description": "Unique token identifier (JWT ID)."
+    },
+    "iss": {
+      "type": "string",
+      "description": "DID key of the token issuer (the agent's signing key)."
+    },
+    "sub": {
+      "type": "string",
+      "description": "DID of the agent on whose behalf the payment is made."
+    },
+    "aud": {
+      "type": "string",
+      "description": "DID of the service that is the intended recipient of this payment token."
+    },
+    "iat": {
+      "type": "integer",
+      "description": "Issued-at time as a Unix timestamp (seconds since epoch)."
+    },
+    "exp": {
+      "type": "integer",
+      "description": "Expiration time as a Unix timestamp (seconds since epoch)."
+    },
+    "aicp:payment": {
+      "$ref": "#/$defs/PaymentDetails"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "MoneyAmount": {
+      "type": "object",
+      "required": ["value", "currency"],
+      "properties": {
+        "value": {
+          "type": "string",
+          "pattern": "^\\d+(\\.\\d+)?$",
+          "description": "Decimal string representation of the monetary value."
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 3,
+          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR')."
+        }
+      },
+      "additionalProperties": false,
+      "description": "A monetary amount with currency."
+    },
+    "PaymentDetails": {
+      "type": "object",
+      "required": ["amount", "purpose", "nonce"],
+      "properties": {
+        "amount": {
+          "$ref": "#/$defs/MoneyAmount",
+          "description": "The exact payment amount being authorized."
+        },
+        "maxAmount": {
+          "$ref": "#/$defs/MoneyAmount",
+          "description": "Maximum amount the service may charge (for usage-based billing)."
+        },
+        "purpose": {
+          "type": "string",
+          "enum": [
+            "service-onboarding",
+            "subscription-payment",
+            "usage-payment",
+            "one-time-purchase"
+          ],
+          "description": "The purpose of this payment."
+        },
+        "serviceCategory": {
+          "type": "string",
+          "description": "Category of the service being paid for."
+        },
+        "adapterId": {
+          "type": "string",
+          "description": "Identifier of the payment adapter handling settlement."
+        },
+        "principalDid": {
+          "type": "string",
+          "description": "DID of the human or organization principal funding this payment."
+        },
+        "nonce": {
+          "type": "string",
+          "description": "Cryptographic nonce to ensure uniqueness and prevent replay."
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "description": "Idempotency key to safely retry payment operations."
+        }
+      },
+      "additionalProperties": false,
+      "description": "AICP-specific payment authorization details."
+    }
+  }
+}

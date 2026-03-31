@@ -1,0 +1,95 @@
+package onboarding
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
+// RateLimiter provides Redis-backed rate limiting for onboarding attempts.
+type RateLimiter struct {
+	redis     *redis.Client
+	maxPerDID int
+	maxPerIP  int
+	window    time.Duration
+}
+
+// NewRateLimiter creates a new rate limiter.
+func NewRateLimiter(rdb *redis.Client, maxPerDID, maxPerIP int, window time.Duration) *RateLimiter {
+	return &RateLimiter{
+		redis:     rdb,
+		maxPerDID: maxPerDID,
+		maxPerIP:  maxPerIP,
+		window:    window,
+	}
+}
+
+// CheckDID checks if a DID has exceeded the onboarding rate limit.
+func (rl *RateLimiter) CheckDID(ctx context.Context, did string) error {
+	key := "aicp:ratelimit:onboard:did:" + did
+	return rl.check(ctx, key, rl.maxPerDID)
+}
+
+// CheckIP checks if an IP address has exceeded the onboarding rate limit.
+func (rl *RateLimiter) CheckIP(ctx context.Context, ip string) error {
+	key := "aicp:ratelimit:onboard:ip:" + ip
+	return rl.check(ctx, key, rl.maxPerIP)
+}
+
+// RecordAttempt increments the rate limit counter for a DID and IP.
+func (rl *RateLimiter) RecordAttempt(ctx context.Context, did, ip string) error {
+	pipe := rl.redis.Pipeline()
+
+	didKey := "aicp:ratelimit:onboard:did:" + did
+	pipe.Incr(ctx, didKey)
+	pipe.Expire(ctx, didKey, rl.window)
+
+	ipKey := "aicp:ratelimit:onboard:ip:" + ip
+	pipe.Incr(ctx, ipKey)
+	pipe.Expire(ctx, ipKey, rl.window)
+
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+func (rl *RateLimiter) check(ctx context.Context, key string, limit int) error {
+	count, err := rl.redis.Get(ctx, key).Int()
+	if err != nil && err != redis.Nil {
+		return fmt.Errorf("checking rate limit: %w", err)
+	}
+	if count >= limit {
+		return fmt.Errorf("rate limit exceeded")
+	}
+	return nil
+}
+
+// AnomalyDetector performs basic anomaly detection on onboarding requests.
+type AnomalyDetector struct {
+	redis *redis.Client
+}
+
+// NewAnomalyDetector creates a new anomaly detector.
+func NewAnomalyDetector(rdb *redis.Client) *AnomalyDetector {
+	return &AnomalyDetector{redis: rdb}
+}
+
+// Check evaluates an onboarding request for suspicious patterns.
+func (ad *AnomalyDetector) Check(ctx context.Context, did, ip string) error {
+	// Check for rapid session creation from the same DID.
+	recentKey := "aicp:anomaly:sessions:" + did
+	count, err := ad.redis.Incr(ctx, recentKey).Result()
+	if err != nil {
+		return nil // Don't block on anomaly detection errors.
+	}
+	if count == 1 {
+		ad.redis.Expire(ctx, recentKey, time.Minute)
+	}
+
+	if count > 10 {
+		return fmt.Errorf("anomaly detected: excessive session creation from DID %s", did)
+	}
+
+	return nil
+}

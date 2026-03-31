@@ -1,0 +1,142 @@
+package commerce
+
+import (
+	"context"
+	"fmt"
+	"math/big"
+
+	"github.com/aicp-protocol/aicp/server/internal/ledger"
+	"github.com/aicp-protocol/aicp/server/pkg/aicp"
+)
+
+// SpendingTracker enforces per-transaction, daily, and monthly spending limits.
+type SpendingTracker struct {
+	backend ledger.LedgerBackend
+}
+
+// NewSpendingTracker creates a new spending tracker.
+func NewSpendingTracker(backend ledger.LedgerBackend) *SpendingTracker {
+	return &SpendingTracker{backend: backend}
+}
+
+// CheckLimits verifies that the given amount doesn't exceed spending limits.
+// Returns true if the payment is allowed.
+func (st *SpendingTracker) CheckLimits(ctx context.Context, did string, amount aicp.MoneyAmount) (bool, error) {
+	// Check daily limit.
+	dailyStr, err := st.backend.GetDailySpending(ctx, did, amount.Currency)
+	if err != nil {
+		return false, fmt.Errorf("getting daily spending: %w", err)
+	}
+
+	daily, ok := new(big.Float).SetString(dailyStr)
+	if !ok {
+		daily = new(big.Float)
+	}
+
+	txAmount, ok := new(big.Float).SetString(amount.Value)
+	if !ok {
+		return false, fmt.Errorf("invalid amount value: %s", amount.Value)
+	}
+
+	newDaily := new(big.Float).Add(daily, txAmount)
+
+	// Default daily limit: 10,000 (can be overridden per-agent via spending authorization).
+	defaultDailyLimit := new(big.Float).SetFloat64(10000)
+	if newDaily.Cmp(defaultDailyLimit) > 0 {
+		return false, nil
+	}
+
+	// Check monthly limit.
+	monthlyStr, err := st.backend.GetMonthlySpending(ctx, did, amount.Currency)
+	if err != nil {
+		return false, fmt.Errorf("getting monthly spending: %w", err)
+	}
+
+	monthly, ok := new(big.Float).SetString(monthlyStr)
+	if !ok {
+		monthly = new(big.Float)
+	}
+
+	newMonthly := new(big.Float).Add(monthly, txAmount)
+
+	// Default monthly limit: 100,000.
+	defaultMonthlyLimit := new(big.Float).SetFloat64(100000)
+	if newMonthly.Cmp(defaultMonthlyLimit) > 0 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// CheckCustomLimits verifies spending against custom per-agent limits from
+// a SpendingAuthorization credential.
+func (st *SpendingTracker) CheckCustomLimits(ctx context.Context, did string, amount aicp.MoneyAmount, limits aicp.SpendingLimits) (bool, error) {
+	// Check per-transaction limit.
+	txAmount, ok := new(big.Float).SetString(amount.Value)
+	if !ok {
+		return false, fmt.Errorf("invalid amount: %s", amount.Value)
+	}
+
+	perTxLimit, ok := new(big.Float).SetString(limits.PerTransaction.Value)
+	if !ok {
+		return false, fmt.Errorf("invalid per-transaction limit: %s", limits.PerTransaction.Value)
+	}
+	if txAmount.Cmp(perTxLimit) > 0 {
+		return false, nil
+	}
+
+	// Check daily limit.
+	dailyStr, err := st.backend.GetDailySpending(ctx, did, amount.Currency)
+	if err != nil {
+		return false, fmt.Errorf("getting daily spending: %w", err)
+	}
+	daily, _ := new(big.Float).SetString(dailyStr)
+	if daily == nil {
+		daily = new(big.Float)
+	}
+	newDaily := new(big.Float).Add(daily, txAmount)
+
+	dailyLimit, ok := new(big.Float).SetString(limits.Daily.Value)
+	if !ok {
+		return false, fmt.Errorf("invalid daily limit: %s", limits.Daily.Value)
+	}
+	if newDaily.Cmp(dailyLimit) > 0 {
+		return false, nil
+	}
+
+	// Check monthly limit.
+	monthlyStr, err := st.backend.GetMonthlySpending(ctx, did, amount.Currency)
+	if err != nil {
+		return false, fmt.Errorf("getting monthly spending: %w", err)
+	}
+	monthly, _ := new(big.Float).SetString(monthlyStr)
+	if monthly == nil {
+		monthly = new(big.Float)
+	}
+	newMonthly := new(big.Float).Add(monthly, txAmount)
+
+	monthlyLimit, ok := new(big.Float).SetString(limits.Monthly.Value)
+	if !ok {
+		return false, fmt.Errorf("invalid monthly limit: %s", limits.Monthly.Value)
+	}
+	if newMonthly.Cmp(monthlyLimit) > 0 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// RecordSpending records a spending event.
+func (st *SpendingTracker) RecordSpending(ctx context.Context, did string, amount aicp.MoneyAmount) error {
+	return st.backend.RecordSpending(ctx, did, amount)
+}
+
+// GetDailySummary returns the current daily spending total.
+func (st *SpendingTracker) GetDailySummary(ctx context.Context, did, currency string) (string, error) {
+	return st.backend.GetDailySpending(ctx, did, currency)
+}
+
+// GetMonthlySummary returns the current monthly spending total.
+func (st *SpendingTracker) GetMonthlySummary(ctx context.Context, did, currency string) (string, error) {
+	return st.backend.GetMonthlySpending(ctx, did, currency)
+}

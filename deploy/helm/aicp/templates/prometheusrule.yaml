@@ -1,0 +1,74 @@
+{{- if .Values.monitoring.prometheusRules }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "aicp.fullname" . }}
+  labels:
+    {{- include "aicp.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: aicp.rules
+      rules:
+        - alert: AICPHighErrorRate
+          expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "AICP high HTTP error rate"
+            description: "More than 5% of HTTP requests are returning 5xx status codes for the last 5 minutes."
+
+        - alert: AICPHighLatency
+          expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "AICP high request latency"
+            description: "The 99th percentile request latency has exceeded 2 seconds for the last 5 minutes."
+
+        - alert: AICPPaymentFailureRate
+          expr: rate(aicp_payment_failures_total[5m]) / rate(aicp_payment_attempts_total[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "AICP high payment failure rate"
+            description: "More than 10% of payment attempts are failing for the last 5 minutes."
+
+        - alert: AICPOnboardingStalled
+          expr: aicp_onboarding_sessions_active{phase!="provisioned"} > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "AICP onboarding session stalled"
+            description: "An onboarding session has been stuck in a non-provisioned phase for more than 30 minutes."
+
+        - alert: AICPDatabaseConnectionPoolExhausted
+          expr: pg_stat_activity_count / pg_stat_activity_max_connections > 0.9
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "AICP database connection pool near exhaustion"
+            description: "PostgreSQL connection usage is above 90% of the maximum for the last 5 minutes."
+
+        - alert: AICPRedisHighMemory
+          expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "AICP Redis memory usage high"
+            description: "Redis memory usage is above 85% of the configured maximum for the last 10 minutes."
+
+        - alert: AICPConsensusBlockLag
+          expr: time() - aicp_ledger_last_block_timestamp > 120
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "AICP consensus block production lagging"
+            description: "No new block has been produced in the last 2 minutes, indicating possible consensus issues."
+{{- end }}

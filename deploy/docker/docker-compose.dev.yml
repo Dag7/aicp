@@ -1,0 +1,37 @@
+# Development overlay — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  aicp-server:
+    build:
+      target: builder          # stop at the builder stage (includes Go toolchain)
+    volumes:
+      - ../../server:/src      # mount source for hot reload
+      - go_mod_cache:/go/pkg/mod
+      - go_build_cache:/root/.cache/go-build
+    ports:
+      - "${AICP_API_PORT:-8080}:8080"
+      - "${AICP_METRICS_PORT:-9090}:9090"
+      - "${AICP_DEBUG_PORT:-2345}:2345"   # delve debugger
+    environment:
+      AICP_LOG_LEVEL: debug
+      AICP_DEV_MODE: "true"
+    entrypoint: ["go", "run", "./cmd/aicp-server/main.go"]
+    # Override the healthcheck for the dev image which has a shell
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres:
+    ports:
+      - "5432:5432"            # always expose in dev
+
+  redis:
+    ports:
+      - "6379:6379"            # always expose in dev
+
+volumes:
+  go_mod_cache:
+  go_build_cache:

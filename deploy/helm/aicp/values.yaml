@@ -1,0 +1,310 @@
+# Default values for the AICP Helm chart.
+
+# -- Number of server replicas
+replicaCount: 3
+
+image:
+  # -- Container image repository
+  repository: ghcr.io/aicp-protocol/aicp-server
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+  # -- Image tag (defaults to appVersion)
+  tag: "latest"
+
+# -- Image pull secrets for private registries
+imagePullSecrets: []
+# -- Override the chart name
+nameOverride: ""
+# -- Override the full release name
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Whether to create a service account
+  create: true
+  # -- Annotations for the service account
+  annotations: {}
+  # -- Service account name (generated if not set)
+  name: ""
+
+# -- Pod-level annotations
+podAnnotations: {}
+
+# -- Pod-level security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container-level security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65534
+  capabilities:
+    drop:
+      - ALL
+
+# Server configuration
+server:
+  # -- HTTP listen port
+  port: 8080
+  # -- Metrics listen port
+  metricsPort: 9090
+  # -- Log level (debug, info, warn, error)
+  logLevel: info
+  # -- Log format (json, text)
+  logFormat: json
+  # -- HTTP read timeout
+  readTimeout: "10s"
+  # -- HTTP write timeout
+  writeTimeout: "30s"
+  # -- HTTP idle timeout
+  idleTimeout: "120s"
+  # -- Graceful shutdown timeout
+  shutdownTimeout: "15s"
+
+# Service configuration
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- HTTP port
+  httpPort: 8080
+  # -- Metrics port
+  metricsPort: 9090
+
+# PostgreSQL configuration
+postgresql:
+  # -- Use an internal (subchart) PostgreSQL instance
+  internal: true
+  # -- External PostgreSQL connection URL (used when internal is false)
+  externalUrl: ""
+  # -- Maximum open connections
+  maxOpenConns: 25
+  # -- Maximum idle connections
+  maxIdleConns: 10
+  # -- Connection max lifetime
+  connMaxLifetime: "30m"
+  # -- Connection max idle time
+  connMaxIdleTime: "5m"
+  # Internal PostgreSQL settings (used when internal is true)
+  auth:
+    # -- PostgreSQL username
+    username: aicp
+    # -- PostgreSQL password
+    password: aicp
+    # -- PostgreSQL database name
+    database: aicp
+  primary:
+    persistence:
+      # -- Enable persistence for internal PostgreSQL
+      enabled: true
+      # -- PVC size
+      size: 10Gi
+
+# Redis configuration
+redis:
+  # -- Use an internal (subchart) Redis instance
+  internal: true
+  # -- External Redis URL (used when internal is false)
+  externalUrl: ""
+  # -- Maximum retries
+  maxRetries: 3
+  # -- Read timeout
+  readTimeout: "3s"
+  # -- Write timeout
+  writeTimeout: "3s"
+  # -- Connection pool size
+  poolSize: 50
+
+# Identity layer configuration
+identity:
+  # -- Key type for identity operations
+  keyType: Ed25519
+  # -- DID method identifier
+  didMethod: aicp
+  # -- Credential time-to-live
+  credentialTTL: "8760h"
+  # -- Grace period for key rotation
+  keyRotationGracePeriod: "24h"
+
+# Commerce layer configuration
+commerce:
+  # -- Payment token TTL
+  paymentTokenTTL: "5m"
+  # -- Maximum payment token lifetime
+  paymentTokenMax: "15m"
+  # -- Enabled payment adapters
+  enabledAdapters: "stripe,paypal,usdc"
+  stripe:
+    # -- Stripe secret key (use existingSecret in production)
+    secretKey: ""
+    # -- Stripe webhook secret
+    webhookSecret: ""
+  paypal:
+    # -- PayPal client ID
+    clientId: ""
+    # -- PayPal client secret
+    clientSecret: ""
+    # -- Enable PayPal sandbox mode
+    sandbox: true
+  usdc:
+    # -- Circle API key
+    apiKey: ""
+    # -- Circle entity ID
+    entityId: ""
+    # -- Enable USDC sandbox mode
+    sandbox: true
+
+# Ledger layer configuration
+ledger:
+  # -- Validator DID
+  validatorDID: ""
+  # -- Path to validator key file
+  validatorKeyPath: "/data/validator/key.json"
+  # -- Block creation interval
+  blockInterval: "10s"
+  # -- Maximum entries per block
+  maxEntriesPerBlock: 50
+  # -- Consensus timeout
+  consensusTimeout: "5s"
+  # -- Comma-separated peer addresses
+  peerAddresses: ""
+  # -- gRPC port for validator communication
+  grpcPort: 9091
+
+# Discovery layer configuration
+discovery:
+  # -- Cache TTL
+  cacheTTL: "5m"
+  # -- Maximum search results
+  maxSearchResults: 50
+  # -- Well-known path
+  wellKnownPath: "/.well-known/aicp.json"
+
+# -- Existing secret containing sensitive config (keys: database-url, redis-url, stripe-secret-key, etc.)
+existingSecret: ""
+
+# Ingress configuration
+ingress:
+  # -- Enable ingress
+  enabled: false
+  # -- Ingress class name
+  className: ""
+  # -- Ingress annotations
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: aicp.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- TLS configuration
+  tls: []
+  #  - secretName: aicp-tls
+  #    hosts:
+  #      - aicp.local
+
+# Horizontal Pod Autoscaler configuration
+autoscaling:
+  # -- Enable HPA
+  enabled: true
+  # -- Minimum replicas
+  minReplicas: 2
+  # -- Maximum replicas
+  maxReplicas: 10
+  # -- Target CPU utilization percentage
+  targetCPUUtilizationPercentage: 70
+  # -- Target memory utilization percentage
+  targetMemoryUtilizationPercentage: 80
+
+# Pod Disruption Budget configuration
+podDisruptionBudget:
+  # -- Enable PDB
+  enabled: true
+  # -- Minimum available pods
+  minAvailable: 1
+
+# Container resource requests and limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# -- Node selector
+nodeSelector: {}
+
+# -- Tolerations
+tolerations: []
+
+# -- Affinity rules
+affinity: {}
+
+# Validator StatefulSet configuration
+validator:
+  # -- Enable validator deployment
+  enabled: true
+  # -- Number of validator replicas
+  replicaCount: 3
+  image:
+    # -- Validator image repository
+    repository: ghcr.io/aicp-protocol/aicp-server
+    # -- Validator image tag
+    tag: "latest"
+    # -- Validator image pull policy
+    pullPolicy: IfNotPresent
+  # Container resource requests and limits
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  # Persistent volume claim for validator data
+  persistence:
+    # -- Enable persistence
+    enabled: true
+    # -- Storage class (empty string uses default)
+    storageClass: ""
+    # -- Access modes
+    accessModes:
+      - ReadWriteOnce
+    # -- PVC size
+    size: 10Gi
+  # -- Node selector for validators
+  nodeSelector: {}
+  # -- Tolerations for validators
+  tolerations: []
+  # -- Affinity rules for validators
+  affinity: {}
+
+# Network Policy configuration
+networkPolicy:
+  # -- Enable NetworkPolicy
+  enabled: false
+
+# Monitoring configuration
+monitoring:
+  # -- Enable PrometheusRule alerting rules
+  prometheusRules: false
+
+# Prometheus ServiceMonitor configuration
+serviceMonitor:
+  # -- Enable ServiceMonitor
+  enabled: false
+  # -- Namespace for the ServiceMonitor (defaults to release namespace)
+  namespace: ""
+  # -- Scrape interval
+  interval: 30s
+  # -- Scrape timeout
+  scrapeTimeout: 10s
+  # -- Additional labels for ServiceMonitor
+  additionalLabels: {}

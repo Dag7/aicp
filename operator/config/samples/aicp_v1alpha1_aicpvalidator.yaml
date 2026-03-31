@@ -1,0 +1,15 @@
+apiVersion: aicp.aicp.dev/v1alpha1
+kind: AICPValidator
+metadata:
+  labels:
+    app.kubernetes.io/name: aicp-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: aicp-validator-0
+spec:
+  clusterRef: aicp-production
+  grpcPort: 9091
+  keySecretRef:
+    name: aicp-validator-0-key
+  storage:
+    size: "20Gi"
+    storageClassName: "standard"

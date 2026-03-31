@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aicp.dev/schemas/events.schema.json",
+  "title": "AICP WebSocket Event",
+  "description": "Envelope schema for real-time events delivered over the AICP WebSocket channel.",
+  "type": "object",
+  "required": ["eventId", "type", "timestamp", "source"],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "description": "Globally unique identifier for this event."
+    },
+    "type": {
+      "$ref": "#/$defs/EventType"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of when the event occurred."
+    },
+    "source": {
+      "type": "string",
+      "description": "DID or identifier of the entity that originated this event."
+    },
+    "subject": {
+      "type": "string",
+      "description": "DID or identifier of the entity this event pertains to."
+    },
+    "data": {
+      "type": "object",
+      "description": "Event-specific payload. Structure varies by event type."
+    },
+    "signature": {
+      "type": "string",
+      "description": "Ed25519 signature over the canonical event payload for authenticity verification."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "EventType": {
+      "type": "string",
+      "enum": [
+        "credential.revoked",
+        "revocation_list.updated",
+        "payment.authorized",
+        "payment.settled",
+        "payment.failed",
+        "payment.refunded",
+        "did.created",
+        "did.updated",
+        "did.deactivated",
+        "key.rotated",
+        "service.status_changed",
+        "service.ans_updated",
+        "trust_score.updated",
+        "system.heartbeat",
+        "system.error"
+      ],
+      "description": "The type of event. Uses dotted namespacing by domain."
+    }
+  }
+}

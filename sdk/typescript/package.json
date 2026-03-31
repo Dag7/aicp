@@ -1,0 +1,57 @@
+{
+  "name": "@aicp/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the Agentic Identity and Commerce Protocol (AICP)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "aicp",
+    "ai-agent",
+    "identity",
+    "did",
+    "verifiable-credentials",
+    "commerce",
+    "payment",
+    "agent-protocol"
+  ],
+  "author": "AICP Protocol Authors",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aicp-protocol/aicp.git",
+    "directory": "sdk/typescript"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.2.3",
+    "@noble/hashes": "^1.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "typescript": "^5.8.2",
+    "vitest": "^3.1.1",
+    "eslint": "^9.23.0"
+  }
+}

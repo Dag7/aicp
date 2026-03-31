@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aicp.dev/schemas/did-document.schema.json",
+  "title": "AICP DID Document",
+  "description": "DID Document for the did:aicp method, conforming to W3C DID Core.",
+  "type": "object",
+  "required": ["@context", "id", "controller"],
+  "properties": {
+    "@context": {
+      "type": "array",
+      "items": { "type": "string" },
+      "prefixItems": [
+        { "const": "https://www.w3.org/ns/did/v1" }
+      ],
+      "minItems": 1,
+      "description": "JSON-LD context. First entry must be the W3C DID context."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^did:aicp:[A-Za-z0-9]+(:?[A-Za-z0-9]+)?$",
+      "description": "The DID subject identifier using the did:aicp method."
+    },
+    "controller": {
+      "type": "string",
+      "description": "The DID of the entity authorized to make changes to this DID Document."
+    },
+    "verificationMethod": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/VerificationMethod" },
+      "description": "Cryptographic public keys associated with this DID."
+    },
+    "authentication": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "References to verification methods used for authentication."
+    },
+    "assertionMethod": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "References to verification methods used for issuing assertions."
+    },
+    "capabilityDelegation": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "References to verification methods used for capability delegation."
+    },
+    "service": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Service" },
+      "description": "Service endpoints associated with this DID."
+    },
+    "aicp:principal": {
+      "type": "string",
+      "description": "The DID of the human or organization principal behind this agent."
+    },
+    "aicp:delegationCredential": {
+      "type": "string",
+      "description": "URI or identifier of the verifiable credential that grants this agent delegation authority."
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when this DID Document was created."
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when this DID Document was last updated."
+    },
+    "versionId": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing version number for this DID Document."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "VerificationMethod": {
+      "type": "object",
+      "required": ["id", "type", "controller", "publicKeyMultibase"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this verification method, typically the DID with a fragment."
+        },
+        "type": {
+          "type": "string",
+          "const": "Ed25519VerificationKey2020",
+          "description": "The cryptographic suite used by this verification method."
+        },
+        "controller": {
+          "type": "string",
+          "description": "The DID of the entity that controls this verification method."
+        },
+        "publicKeyMultibase": {
+          "type": "string",
+          "pattern": "^z",
+          "description": "The public key encoded in multibase format (base58-btc, prefixed with 'z')."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Service": {
+      "type": "object",
+      "required": ["id", "type", "serviceEndpoint"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this service endpoint."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of service (e.g., 'AICPService', 'LinkedDomains')."
+        },
+        "serviceEndpoint": {
+          "type": "string",
+          "description": "The URI of the service endpoint."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

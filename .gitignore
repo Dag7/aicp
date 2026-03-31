@@ -1,0 +1,75 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+server/aicp-server
+vendor/
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# sqlc generated (tracked, but ignore local regeneration artifacts)
+# server/sqlc/generated/ is tracked
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# TypeScript SDK
+sdk/typescript/node_modules/
+sdk/typescript/dist/
+sdk/typescript/coverage/
+sdk/typescript/*.tsbuildinfo
+
+# Python SDK
+sdk/python/.venv/
+sdk/python/venv/
+sdk/python/__pycache__/
+sdk/python/src/aicp/__pycache__/
+sdk/python/src/*.egg-info/
+sdk/python/dist/
+sdk/python/build/
+sdk/python/.pytest_cache/
+sdk/python/.mypy_cache/
+sdk/python/.ruff_cache/
+*.pyc
+*.pyo
+
+# Docker
+deploy/docker/data/
+
+# Helm
+deploy/helm/aicp/charts/
+
+# Operator
+operator/bin/
+operator/config/crd/bases/
+operator/testbin/
+
+# Documentation site
+docs/site/build/
+docs/site/.docusaurus/
+docs/site/node_modules/
+
+# Test artifacts
+*.prof
+*.trace
+
+# Temporary
+tmp/
+*.tmp

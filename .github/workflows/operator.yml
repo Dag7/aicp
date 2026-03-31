@@ -1,0 +1,104 @@
+name: Operator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "operator/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "operator/**"
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: operator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: operator/go.sum
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: operator
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: operator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: operator/go.sum
+
+      - name: Run tests (envtest)
+        run: make test
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: operator-coverage
+          path: operator/cover.out
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: operator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: operator/go.sum
+
+      - name: Build manager binary
+        run: make build
+
+      - name: Build Docker image
+        run: make docker-build
+
+  manifests:
+    name: Verify Generated Files
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: operator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: operator/go.sum
+
+      - name: Generate manifests and code
+        run: |
+          make manifests
+          make generate
+
+      - name: Ensure no diff
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Generated files are out of date. Run 'make manifests && make generate' and commit the result."
+            git diff
+            exit 1
+          fi

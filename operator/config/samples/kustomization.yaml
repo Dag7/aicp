@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- aicp_v1alpha1_aicpcluster.yaml
+- aicp_v1alpha1_aicpvalidator.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

@@ -1,0 +1,219 @@
+version: '3'
+
+vars:
+  SERVER_DIR: server
+  OPERATOR_DIR: operator
+  SDK_TS_DIR: sdk/typescript
+  SDK_PY_DIR: sdk/python
+  BINARY_NAME: aicp-server
+  DOCKER_IMAGE: ghcr.io/aicp-protocol/aicp-server
+  DOCKER_OPERATOR_IMAGE: ghcr.io/aicp-protocol/aicp-operator
+
+tasks:
+  # ─── Default ────────────────────────────────────────────────────────
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list-all
+
+  # ─── Server (Go) ───────────────────────────────────────────────────
+  build:
+    desc: Build the AICP server binary
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - go build -ldflags="-s -w" -o ../bin/{{.BINARY_NAME}} ./cmd/aicp-server
+
+  test:
+    desc: Run all Go tests with race detection
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - go test -race -cover -coverprofile=coverage.out ./...
+
+  test:short:
+    desc: Run Go unit tests only (no integration)
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - go test -short -race ./...
+
+  lint:
+    desc: Run golangci-lint
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - golangci-lint run ./...
+
+  fmt:
+    desc: Format Go code
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - gofmt -s -w .
+      - goimports -w .
+
+  vet:
+    desc: Run go vet
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - go vet ./...
+
+  tidy:
+    desc: Tidy Go module dependencies
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - go mod tidy
+
+  # ─── Database ──────────────────────────────────────────────────────
+  migrate:up:
+    desc: Run all pending database migrations
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - go run -tags migrate ./cmd/aicp-server migrate up
+
+  migrate:down:
+    desc: Rollback the last database migration
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - go run -tags migrate ./cmd/aicp-server migrate down 1
+
+  migrate:create:
+    desc: Create a new migration (usage: task migrate:create -- name_of_migration)
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - migrate create -ext sql -dir internal/ledger/migrations -seq {{.CLI_ARGS}}
+
+  sqlc:
+    desc: Regenerate sqlc type-safe query code
+    dir: '{{.SERVER_DIR}}'
+    cmds:
+      - sqlc generate -f sqlc/sqlc.yaml
+
+  # ─── TypeScript SDK ────────────────────────────────────────────────
+  sdk:ts:install:
+    desc: Install TypeScript SDK dependencies
+    dir: '{{.SDK_TS_DIR}}'
+    cmds:
+      - npm ci
+
+  sdk:ts:build:
+    desc: Build TypeScript SDK
+    dir: '{{.SDK_TS_DIR}}'
+    cmds:
+      - npm run build
+
+  sdk:ts:test:
+    desc: Run TypeScript SDK tests
+    dir: '{{.SDK_TS_DIR}}'
+    cmds:
+      - npm test
+
+  sdk:ts:lint:
+    desc: Lint TypeScript SDK
+    dir: '{{.SDK_TS_DIR}}'
+    cmds:
+      - npm run lint
+
+  # ─── Python SDK ────────────────────────────────────────────────────
+  sdk:py:install:
+    desc: Install Python SDK dependencies
+    dir: '{{.SDK_PY_DIR}}'
+    cmds:
+      - pip install -e ".[dev]"
+
+  sdk:py:build:
+    desc: Build Python SDK
+    dir: '{{.SDK_PY_DIR}}'
+    cmds:
+      - python -m build
+
+  sdk:py:test:
+    desc: Run Python SDK tests
+    dir: '{{.SDK_PY_DIR}}'
+    cmds:
+      - pytest -v --cov=aicp --cov-report=term-missing
+
+  sdk:py:lint:
+    desc: Lint Python SDK
+    dir: '{{.SDK_PY_DIR}}'
+    cmds:
+      - ruff check .
+      - mypy src/aicp
+
+  # ─── K8s Operator ──────────────────────────────────────────────────
+  operator:build:
+    desc: Build the K8s operator binary
+    dir: '{{.OPERATOR_DIR}}'
+    cmds:
+      - go build -ldflags="-s -w" -o ../bin/aicp-operator ./cmd/manager
+
+  operator:test:
+    desc: Run operator tests
+    dir: '{{.OPERATOR_DIR}}'
+    cmds:
+      - go test -race ./...
+
+  operator:manifests:
+    desc: Generate CRD manifests
+    dir: '{{.OPERATOR_DIR}}'
+    cmds:
+      - controller-gen crd paths="./..." output:crd:artifacts:config=config/crd/bases
+
+  # ─── Docker ────────────────────────────────────────────────────────
+  docker:build:
+    desc: Build server Docker image
+    cmds:
+      - docker build -f deploy/docker/Dockerfile.server -t {{.DOCKER_IMAGE}}:latest .
+
+  docker:up:
+    desc: Start full stack (server + PostgreSQL + Redis)
+    dir: deploy/docker
+    cmds:
+      - docker compose up -d
+
+  docker:down:
+    desc: Stop the full stack
+    dir: deploy/docker
+    cmds:
+      - docker compose down
+
+  docker:logs:
+    desc: Tail logs from all services
+    dir: deploy/docker
+    cmds:
+      - docker compose logs -f
+
+  # ─── Helm ──────────────────────────────────────────────────────────
+  helm:lint:
+    desc: Lint the Helm chart
+    cmds:
+      - helm lint deploy/helm/aicp
+
+  helm:template:
+    desc: Render Helm chart templates
+    cmds:
+      - helm template aicp deploy/helm/aicp
+
+  # ─── Aggregate ─────────────────────────────────────────────────────
+  check:
+    desc: Run all checks (fmt, vet, lint, test)
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: lint
+      - task: test
+
+  all:
+    desc: Build and test everything
+    cmds:
+      - task: build
+      - task: check
+      - task: sdk:ts:build
+      - task: sdk:ts:test
+      - task: sdk:py:test
+      - task: operator:build
+      - task: operator:test
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf bin/
+      - rm -f server/coverage.out
+      - rm -rf sdk/typescript/dist/
+      - rm -rf sdk/python/dist/ sdk/python/build/

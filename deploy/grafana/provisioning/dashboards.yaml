@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: 'aicp'
+    orgId: 1
+    folder: 'AICP'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards/aicp
+      foldersFromFilesStructure: false

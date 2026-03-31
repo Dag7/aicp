@@ -1,0 +1,232 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aicp.fullname" . }}-server
+  labels:
+    {{- include "aicp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "aicp.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "aicp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "aicp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: aicp-server
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.port }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.server.metricsPort }}
+              protocol: TCP
+          env:
+            # Server
+            - name: AICP_SERVER_HOST
+              value: "0.0.0.0"
+            - name: AICP_SERVER_PORT
+              value: {{ .Values.server.port | quote }}
+            - name: AICP_SERVER_METRICS_PORT
+              value: {{ .Values.server.metricsPort | quote }}
+            - name: AICP_SERVER_LOG_LEVEL
+              value: {{ .Values.server.logLevel | quote }}
+            - name: AICP_SERVER_LOG_FORMAT
+              value: {{ .Values.server.logFormat | quote }}
+            - name: AICP_SERVER_READ_TIMEOUT
+              value: {{ .Values.server.readTimeout | quote }}
+            - name: AICP_SERVER_WRITE_TIMEOUT
+              value: {{ .Values.server.writeTimeout | quote }}
+            - name: AICP_SERVER_IDLE_TIMEOUT
+              value: {{ .Values.server.idleTimeout | quote }}
+            - name: AICP_SERVER_SHUTDOWN_TIMEOUT
+              value: {{ .Values.server.shutdownTimeout | quote }}
+            # Database
+            {{- if .Values.existingSecret }}
+            - name: AICP_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: database-url
+            {{- else }}
+            - name: AICP_DATABASE_URL
+              value: {{ include "aicp.databaseUrl" . | quote }}
+            {{- end }}
+            - name: AICP_DATABASE_MAX_OPEN_CONNS
+              value: {{ .Values.postgresql.maxOpenConns | quote }}
+            - name: AICP_DATABASE_MAX_IDLE_CONNS
+              value: {{ .Values.postgresql.maxIdleConns | quote }}
+            - name: AICP_DATABASE_CONN_MAX_LIFETIME
+              value: {{ .Values.postgresql.connMaxLifetime | quote }}
+            - name: AICP_DATABASE_CONN_MAX_IDLE
+              value: {{ .Values.postgresql.connMaxIdleTime | quote }}
+            # Redis
+            {{- if .Values.existingSecret }}
+            - name: AICP_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: redis-url
+            {{- else }}
+            - name: AICP_REDIS_URL
+              value: {{ include "aicp.redisUrl" . | quote }}
+            {{- end }}
+            - name: AICP_REDIS_MAX_RETRIES
+              value: {{ .Values.redis.maxRetries | quote }}
+            - name: AICP_REDIS_READ_TIMEOUT
+              value: {{ .Values.redis.readTimeout | quote }}
+            - name: AICP_REDIS_WRITE_TIMEOUT
+              value: {{ .Values.redis.writeTimeout | quote }}
+            - name: AICP_REDIS_POOL_SIZE
+              value: {{ .Values.redis.poolSize | quote }}
+            # Identity
+            - name: AICP_IDENTITY_KEY_TYPE
+              value: {{ .Values.identity.keyType | quote }}
+            - name: AICP_IDENTITY_DID_METHOD
+              value: {{ .Values.identity.didMethod | quote }}
+            - name: AICP_IDENTITY_CREDENTIAL_TTL
+              value: {{ .Values.identity.credentialTTL | quote }}
+            - name: AICP_IDENTITY_KEY_ROTATION_GRACE
+              value: {{ .Values.identity.keyRotationGracePeriod | quote }}
+            # Commerce
+            - name: AICP_COMMERCE_PAYMENT_TOKEN_TTL
+              value: {{ .Values.commerce.paymentTokenTTL | quote }}
+            - name: AICP_COMMERCE_PAYMENT_TOKEN_MAX
+              value: {{ .Values.commerce.paymentTokenMax | quote }}
+            - name: AICP_COMMERCE_ENABLED_ADAPTERS
+              value: {{ .Values.commerce.enabledAdapters | quote }}
+            {{- if .Values.existingSecret }}
+            - name: AICP_COMMERCE_STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: stripe-secret-key
+                  optional: true
+            - name: AICP_COMMERCE_STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: stripe-webhook-secret
+                  optional: true
+            - name: AICP_COMMERCE_PAYPAL_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: paypal-client-id
+                  optional: true
+            - name: AICP_COMMERCE_PAYPAL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: paypal-client-secret
+                  optional: true
+            - name: AICP_COMMERCE_USDC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: usdc-api-key
+                  optional: true
+            {{- else }}
+            {{- if .Values.commerce.stripe.secretKey }}
+            - name: AICP_COMMERCE_STRIPE_SECRET_KEY
+              value: {{ .Values.commerce.stripe.secretKey | quote }}
+            {{- end }}
+            {{- if .Values.commerce.stripe.webhookSecret }}
+            - name: AICP_COMMERCE_STRIPE_WEBHOOK_SECRET
+              value: {{ .Values.commerce.stripe.webhookSecret | quote }}
+            {{- end }}
+            {{- if .Values.commerce.paypal.clientId }}
+            - name: AICP_COMMERCE_PAYPAL_CLIENT_ID
+              value: {{ .Values.commerce.paypal.clientId | quote }}
+            {{- end }}
+            {{- if .Values.commerce.paypal.clientSecret }}
+            - name: AICP_COMMERCE_PAYPAL_CLIENT_SECRET
+              value: {{ .Values.commerce.paypal.clientSecret | quote }}
+            {{- end }}
+            {{- if .Values.commerce.usdc.apiKey }}
+            - name: AICP_COMMERCE_USDC_API_KEY
+              value: {{ .Values.commerce.usdc.apiKey | quote }}
+            {{- end }}
+            {{- end }}
+            - name: AICP_COMMERCE_PAYPAL_SANDBOX
+              value: {{ .Values.commerce.paypal.sandbox | quote }}
+            {{- if .Values.commerce.usdc.entityId }}
+            - name: AICP_COMMERCE_USDC_ENTITY_ID
+              value: {{ .Values.commerce.usdc.entityId | quote }}
+            {{- end }}
+            - name: AICP_COMMERCE_USDC_SANDBOX
+              value: {{ .Values.commerce.usdc.sandbox | quote }}
+            # Discovery
+            - name: AICP_DISCOVERY_CACHE_TTL
+              value: {{ .Values.discovery.cacheTTL | quote }}
+            - name: AICP_DISCOVERY_MAX_SEARCH_RESULTS
+              value: {{ .Values.discovery.maxSearchResults | quote }}
+            - name: AICP_DISCOVERY_WELL_KNOWN_PATH
+              value: {{ .Values.discovery.wellKnownPath | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

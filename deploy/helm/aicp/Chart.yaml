@@ -1,0 +1,17 @@
+apiVersion: v2
+name: aicp
+description: AI Commerce Protocol (AICP) server and validator deployment
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - aicp
+  - ai-commerce
+  - protocol
+  - did
+  - identity
+home: https://github.com/aicp-protocol/aicp
+sources:
+  - https://github.com/aicp-protocol/aicp
+maintainers:
+  - name: AICP Team

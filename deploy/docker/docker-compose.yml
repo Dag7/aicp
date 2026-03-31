@@ -1,0 +1,84 @@
+services:
+  # --------------------------------------------------------------------------
+  # PostgreSQL 16
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aicp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aicp_secret}
+      POSTGRES_DB: aicp
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aicp -d aicp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    shm_size: 256mb
+
+  # --------------------------------------------------------------------------
+  # Redis 7
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # --------------------------------------------------------------------------
+  # AICP Server
+  # --------------------------------------------------------------------------
+  aicp-server:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile.server
+      args:
+        VERSION: ${AICP_VERSION:-dev}
+        COMMIT_SHA: ${AICP_COMMIT_SHA:-unknown}
+        BUILD_TIME: ${AICP_BUILD_TIME:-unknown}
+    restart: unless-stopped
+    ports:
+      - "${AICP_API_PORT:-8080}:8080"
+      - "${AICP_METRICS_PORT:-9090}:9090"
+    environment:
+      AICP_DATABASE_URL: postgres://aicp:${POSTGRES_PASSWORD:-aicp_secret}@postgres:5432/aicp?sslmode=disable
+      AICP_REDIS_URL: redis://redis:6379/0
+      AICP_LOG_LEVEL: ${AICP_LOG_LEVEL:-info}
+      AICP_LISTEN_ADDR: 0.0.0.0:8080
+      AICP_METRICS_ADDR: 0.0.0.0:9090
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [
+        "CMD", "/usr/local/bin/aicp-server",
+        "-health-check",
+      ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  pg_data:
+  redis_data:

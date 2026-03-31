@@ -1,0 +1,1514 @@
+openapi: 3.1.0
+info:
+  title: AICP - Agentic Identity and Commerce Protocol
+  version: 1.0.0
+  description: |
+    The Agentic Identity and Commerce Protocol (AICP) enables autonomous AI agents
+    to discover services, prove identity via W3C DIDs and Verifiable Credentials,
+    negotiate capabilities, authorize payments, and receive real-time events.
+
+    This specification is the protocol source of truth. All request and response
+    types correspond 1:1 to the Go types in `server/pkg/aicp/types.go`.
+  contact:
+    name: AICP Protocol
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Discovery
+    description: Service discovery via the Agent Name System (ANS)
+  - name: Onboarding
+    description: Four-phase agent onboarding flow
+  - name: Verification
+    description: DID resolution and credential verification
+  - name: Payment
+    description: Payment token issuance, execution, and status
+  - name: WebSocket
+    description: Real-time event streaming over WebSocket
+  - name: Operational
+    description: Health, readiness, and metrics
+
+# ---------------------------------------------------------------------------
+# Security Schemes
+# ---------------------------------------------------------------------------
+security: []
+
+paths:
+  # =========================================================================
+  # Discovery
+  # =========================================================================
+  /.well-known/aicp.json:
+    get:
+      operationId: getANSRecord
+      summary: Get ANS record for service discovery
+      description: |
+        Returns the Agent Name System (ANS) record for this service. The record
+        describes the service identity, onboarding requirements, accepted
+        authentication methods, pricing, trust signals, and endpoint URLs.
+
+        Responses are cacheable (Cache-Control: public, max-age=300).
+      tags: [Discovery]
+      responses:
+        "200":
+          description: ANS record for this service
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=300"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ANSRecord"
+        "404":
+          description: ANS record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # Onboarding
+  # =========================================================================
+  /aicp/v1/onboard:
+    post:
+      operationId: onboardInitiate
+      summary: Initiate onboarding (identity presentation)
+      description: |
+        Phase 1 of the four-phase onboarding flow. The agent presents its DID
+        and a Verifiable Presentation containing credentials. The service
+        creates a session and returns a DID-Auth challenge that the agent must
+        sign in the next phase.
+      tags: [Onboarding]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardInitRequest"
+      responses:
+        "201":
+          description: Session created; challenge issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_OnboardInitResponse"
+        "400":
+          description: Invalid request body or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /aicp/v1/onboard/{id}/negotiate:
+    post:
+      operationId: onboardNegotiate
+      summary: Negotiate capabilities
+      description: |
+        Phase 2 of onboarding. The agent responds to the DID-Auth challenge
+        and offers desired capabilities. The service approves capabilities and
+        returns terms (pricing tier, rate limits, etc.).
+      tags: [Onboarding]
+      parameters:
+        - $ref: "#/components/parameters/SessionIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NegotiateRequest"
+      responses:
+        "200":
+          description: Capabilities negotiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_NegotiateResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Challenge verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid phase transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /aicp/v1/onboard/{id}/authorize:
+    post:
+      operationId: onboardAuthorize
+      summary: Authorize payment
+      description: |
+        Phase 3 of onboarding. The agent provides a payment token to authorize
+        billing for the negotiated capabilities.
+      tags: [Onboarding]
+      parameters:
+        - $ref: "#/components/parameters/SessionIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthorizeRequest"
+      responses:
+        "200":
+          description: Payment authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_AuthorizeResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid phase transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /aicp/v1/onboard/{id}/provision:
+    post:
+      operationId: onboardProvision
+      summary: Provision account
+      description: |
+        Phase 4 (final) of onboarding. The service provisions the account,
+        returns service-specific credentials (API keys, tokens), and an
+        expiration time.
+      tags: [Onboarding]
+      parameters:
+        - $ref: "#/components/parameters/SessionIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProvisionRequest"
+      responses:
+        "200":
+          description: Account provisioned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_ProvisionResponse"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid phase transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # Verification
+  # =========================================================================
+  /aicp/v1/verify:
+    post:
+      operationId: verifyDID
+      summary: Verify DID and credentials
+      description: |
+        Resolves the given DID, verifies its delegation chain (for agent DIDs),
+        computes a trust score, and optionally verifies each Verifiable
+        Credential in the submitted presentation.
+      tags: [Verification]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyRequest"
+      responses:
+        "200":
+          description: Verification result (check `valid` field)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_VerifyResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # Payment
+  # =========================================================================
+  /aicp/v1/payment/token:
+    post:
+      operationId: requestPaymentToken
+      summary: Request a payment token
+      description: |
+        Issues a signed JWS payment token that authorizes a specific payment
+        amount from the agent to the service. The token is single-use and
+        time-limited.
+      tags: [Payment]
+      security:
+        - DIDAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentTokenRequest"
+      responses:
+        "201":
+          description: Payment token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_PaymentTokenResponse"
+        "400":
+          description: Invalid request or missing fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Token issuance failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /aicp/v1/payment/execute:
+    post:
+      operationId: executePayment
+      summary: Execute a payment
+      description: |
+        Executes a previously issued payment token. The server verifies the
+        JWS signature, checks for replay, validates spending limits, routes
+        the payment through the appropriate adapter, and records a receipt
+        on the ledger.
+      tags: [Payment]
+      security:
+        - DIDAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentExecuteRequest"
+      responses:
+        "200":
+          description: Payment executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_PaymentExecuteResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Payment processing failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Token expired, credential revoked, or spending limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Payment token replay (already used)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /aicp/v1/payment/status/{id}:
+    get:
+      operationId: getPaymentStatus
+      summary: Get payment status
+      description: |
+        Returns the current status of a payment by its ID, including the
+        amount, payer/payee DIDs, adapter used, and settlement time.
+      tags: [Payment]
+      security:
+        - DIDAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Payment ID
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payment status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_PaymentStatusResponse"
+        "400":
+          description: Missing payment ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # WebSocket
+  # =========================================================================
+  /aicp/v1/ws/ticket:
+    post:
+      operationId: getWebSocketTicket
+      summary: Get WebSocket authentication ticket
+      description: |
+        Issues a one-time, time-limited ticket (30 s TTL) that the client
+        presents as a query parameter during the WebSocket upgrade. Requires
+        DID-Auth.
+      tags: [WebSocket]
+      security:
+        - DIDAuth: []
+      responses:
+        "200":
+          description: Ticket issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_WebSocketTicketResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Ticket issuance failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /aicp/v1/ws:
+    get:
+      operationId: webSocketUpgrade
+      summary: WebSocket upgrade
+      description: |
+        Upgrades the HTTP connection to a WebSocket for real-time event
+        streaming. The client must provide a valid one-time `ticket` query
+        parameter obtained from `POST /aicp/v1/ws/ticket`.
+
+        **Note:** This endpoint performs a WebSocket upgrade (HTTP 101) and is
+        not a standard REST endpoint. After the upgrade, the server pushes
+        `Event` objects (see schema) as JSON frames. Event types include
+        credential revocations, payment status changes, DID lifecycle events,
+        trust score updates, and system heartbeats.
+      tags: [WebSocket]
+      parameters:
+        - name: ticket
+          in: query
+          required: true
+          description: One-time authentication ticket from POST /aicp/v1/ws/ticket
+          schema:
+            type: string
+      responses:
+        "101":
+          description: WebSocket upgrade successful
+        "400":
+          description: Missing ticket parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid or expired ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # Operational
+  # =========================================================================
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Liveness health check
+      description: Returns basic liveness status. Always succeeds if the process is running.
+      tags: [Operational]
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_HealthResponse"
+
+  /ready:
+    get:
+      operationId: readinessCheck
+      summary: Readiness check
+      description: |
+        Checks whether the service is ready to accept traffic. Verifies
+        database connectivity. Returns 503 if the backing store is unavailable.
+      tags: [Operational]
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse_ReadyResponse"
+        "503":
+          description: Service is not ready (database unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /metrics:
+    get:
+      operationId: getMetrics
+      summary: Prometheus metrics
+      description: Returns Prometheus-formatted metrics for the service.
+      tags: [Operational]
+      responses:
+        "200":
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+# ===========================================================================
+# Components
+# ===========================================================================
+components:
+  # -------------------------------------------------------------------------
+  # Security Schemes
+  # -------------------------------------------------------------------------
+  securitySchemes:
+    DIDAuth:
+      type: http
+      scheme: bearer
+      description: |
+        DID-Auth bearer token. The Authorization header carries a JWS token
+        signed by the agent's DID key. Format: `Bearer <did-auth-token>`.
+
+        The server extracts and verifies the issuer DID from the JWS claims.
+
+  # -------------------------------------------------------------------------
+  # Parameters
+  # -------------------------------------------------------------------------
+  parameters:
+    SessionIdPath:
+      name: id
+      in: path
+      required: true
+      description: Onboarding session ID
+      schema:
+        type: string
+
+  # -------------------------------------------------------------------------
+  # Schemas
+  # -------------------------------------------------------------------------
+  schemas:
+    # -----------------------------------------------------------------------
+    # Response Envelopes
+    # -----------------------------------------------------------------------
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    ErrorDetail:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - NOT_FOUND
+            - BAD_REQUEST
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - CONFLICT
+            - RATE_LIMITED
+            - INTERNAL_ERROR
+            - DID_NOT_FOUND
+            - DID_DEACTIVATED
+            - CREDENTIAL_REVOKED
+            - CREDENTIAL_EXPIRED
+            - PAYMENT_TOKEN_EXPIRED
+            - PAYMENT_TOKEN_REPLAY
+            - SPENDING_LIMIT_EXCEEDED
+            - INVALID_PHASE
+            - SESSION_EXPIRED
+            - PAYMENT_FAILED
+        message:
+          type: string
+          description: Human-readable error message
+        detail:
+          type: string
+          description: Additional diagnostic detail
+
+    # -- Typed success envelopes (one per distinct response payload) --------
+
+    SuccessResponse_OnboardInitResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/OnboardInitResponse"
+
+    SuccessResponse_NegotiateResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/NegotiateResponse"
+
+    SuccessResponse_AuthorizeResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AuthorizeResponse"
+
+    SuccessResponse_ProvisionResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/ProvisionResponse"
+
+    SuccessResponse_VerifyResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/VerifyResponse"
+
+    SuccessResponse_PaymentTokenResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PaymentTokenResponse"
+
+    SuccessResponse_PaymentExecuteResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PaymentExecuteResponse"
+
+    SuccessResponse_PaymentStatusResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/PaymentStatusResponse"
+
+    SuccessResponse_WebSocketTicketResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/WebSocketTicketResponse"
+
+    SuccessResponse_HealthResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/HealthResponse"
+
+    SuccessResponse_ReadyResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/ReadyResponse"
+
+    # -----------------------------------------------------------------------
+    # DID Types
+    # -----------------------------------------------------------------------
+    DIDDocument:
+      type: object
+      required: ["@context", id, controller, verificationMethod, authentication, created, updated, versionId]
+      properties:
+        "@context":
+          type: array
+          items:
+            type: string
+          example:
+            - "https://www.w3.org/ns/did/v1"
+            - "https://w3id.org/security/suites/ed25519-2020/v1"
+        id:
+          type: string
+          description: The DID URI
+          example: "did:aicp:abc123"
+        controller:
+          type: string
+          description: DID of the controller
+          example: "did:aicp:abc123"
+        verificationMethod:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerificationMethod"
+        authentication:
+          type: array
+          items:
+            type: string
+          description: References to verification methods used for authentication
+        assertionMethod:
+          type: array
+          items:
+            type: string
+          description: References to verification methods used for assertions
+        capabilityDelegation:
+          type: array
+          items:
+            type: string
+          description: References to verification methods for capability delegation
+        service:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceEndpoint"
+        "aicp:principal":
+          type: string
+          description: Principal DID for agent DIDs (delegation root)
+        "aicp:delegationCredential":
+          type: string
+          description: ID of the delegation credential authorizing this agent
+        created:
+          type: string
+          format: date-time
+        updated:
+          type: string
+          format: date-time
+        versionId:
+          type: integer
+
+    VerificationMethod:
+      type: object
+      required: [id, type, controller, publicKeyMultibase]
+      properties:
+        id:
+          type: string
+          example: "did:aicp:abc123#key-1"
+        type:
+          type: string
+          example: "Ed25519VerificationKey2020"
+        controller:
+          type: string
+          example: "did:aicp:abc123"
+        publicKeyMultibase:
+          type: string
+          description: Multibase-encoded public key (e.g. z-base58btc for Ed25519)
+          example: "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
+
+    ServiceEndpoint:
+      type: object
+      required: [id, type, serviceEndpoint]
+      properties:
+        id:
+          type: string
+          example: "did:aicp:abc123#service-1"
+        type:
+          type: string
+          example: "AICPEndpoint"
+        serviceEndpoint:
+          type: string
+          format: uri
+          example: "https://api.example.com/aicp/v1"
+
+    # -----------------------------------------------------------------------
+    # Verifiable Credential Types
+    # -----------------------------------------------------------------------
+    VerifiableCredential:
+      type: object
+      required: ["@context", id, type, issuer, issuanceDate, credentialSubject]
+      properties:
+        "@context":
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+          format: uri
+        type:
+          type: array
+          items:
+            type: string
+          example: ["VerifiableCredential", "AICPAgentDelegation"]
+        issuer:
+          type: string
+          description: DID of the credential issuer
+        issuanceDate:
+          type: string
+          format: date-time
+        expirationDate:
+          type: string
+          format: date-time
+        credentialSubject:
+          type: object
+          description: Arbitrary credential subject (schema depends on credential type)
+          additionalProperties: true
+        credentialStatus:
+          $ref: "#/components/schemas/CredentialStatus"
+        proof:
+          $ref: "#/components/schemas/Proof"
+
+    CredentialStatus:
+      type: object
+      required: [id, type, revocationListIndex, revocationListCredential]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          example: "RevocationList2020Status"
+        revocationListIndex:
+          type: string
+        revocationListCredential:
+          type: string
+
+    Proof:
+      type: object
+      required: [type, created, verificationMethod, proofPurpose, proofValue]
+      properties:
+        type:
+          type: string
+          example: "Ed25519Signature2020"
+        created:
+          type: string
+          format: date-time
+        verificationMethod:
+          type: string
+          description: URI of the key used to create the proof
+        proofPurpose:
+          type: string
+          example: "assertionMethod"
+        proofValue:
+          type: string
+          description: Base64url-encoded signature
+        challenge:
+          type: string
+        domain:
+          type: string
+
+    VerifiablePresentation:
+      type: object
+      required: ["@context", type, holder, verifiableCredential]
+      properties:
+        "@context":
+          type: array
+          items:
+            type: string
+        type:
+          type: array
+          items:
+            type: string
+          example: ["VerifiablePresentation"]
+        holder:
+          type: string
+          description: DID of the presentation holder
+        verifiableCredential:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerifiableCredential"
+        proof:
+          $ref: "#/components/schemas/Proof"
+
+    # -----------------------------------------------------------------------
+    # ANS (Agent Name System)
+    # -----------------------------------------------------------------------
+    ANSRecord:
+      type: object
+      required: [aicp_version, service, onboarding, authentication]
+      properties:
+        aicp_version:
+          type: string
+          example: "1.0"
+        service:
+          $ref: "#/components/schemas/ANSServiceInfo"
+        onboarding:
+          $ref: "#/components/schemas/ANSOnboardingInfo"
+        authentication:
+          $ref: "#/components/schemas/ANSAuthInfo"
+        pricing:
+          $ref: "#/components/schemas/ANSPricingInfo"
+        discovery_tags:
+          type: array
+          items:
+            type: string
+        trust:
+          $ref: "#/components/schemas/ANSTrustInfo"
+        endpoints:
+          $ref: "#/components/schemas/ANSEndpoints"
+
+    ANSServiceInfo:
+      type: object
+      required: [name, did, category]
+      properties:
+        name:
+          type: string
+        did:
+          type: string
+        description:
+          type: string
+        category:
+          type: array
+          items:
+            type: string
+        homepage:
+          type: string
+          format: uri
+        logoUrl:
+          type: string
+          format: uri
+        tosUrl:
+          type: string
+          format: uri
+        privacyPolicyUrl:
+          type: string
+          format: uri
+        supportContact:
+          type: string
+        apiDocsUrl:
+          type: string
+          format: uri
+
+    ANSOnboardingInfo:
+      type: object
+      required: [flows, required_credentials]
+      properties:
+        flows:
+          type: array
+          items:
+            type: string
+          description: Supported onboarding flows
+        required_credentials:
+          type: array
+          items:
+            type: string
+          description: Credential types the agent must present
+        optional_credentials:
+          type: array
+          items:
+            type: string
+        accepted_payments:
+          type: array
+          items:
+            type: string
+        minimum_trust_score:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        compliance_requirements:
+          type: array
+          items:
+            type: string
+
+    ANSAuthInfo:
+      type: object
+      required: [did_methods, auth_protocols]
+      properties:
+        did_methods:
+          type: array
+          items:
+            type: string
+          example: ["did:aicp", "did:key", "did:web"]
+        auth_protocols:
+          type: array
+          items:
+            type: string
+          example: ["DID-Auth"]
+        session_ttl_seconds:
+          type: integer
+          description: Session time-to-live in seconds
+
+    ANSPricingInfo:
+      type: object
+      required: [model]
+      properties:
+        model:
+          type: string
+          description: Pricing model (e.g. "tiered", "flat", "usage")
+        currency:
+          type: string
+          example: "USD"
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ANSPricingTier"
+
+    ANSPricingTier:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        rate:
+          type: string
+        description:
+          type: string
+
+    ANSTrustInfo:
+      type: object
+      properties:
+        verified_by:
+          type: array
+          items:
+            type: string
+        established_since:
+          type: string
+          description: ISO 8601 date or year
+        certifications:
+          type: array
+          items:
+            type: string
+
+    ANSEndpoints:
+      type: object
+      properties:
+        onboard:
+          type: string
+          format: uri
+        api_base:
+          type: string
+          format: uri
+        websocket:
+          type: string
+          format: uri
+        health:
+          type: string
+          format: uri
+
+    # -----------------------------------------------------------------------
+    # Onboarding Types
+    # -----------------------------------------------------------------------
+    OnboardingPhase:
+      type: string
+      enum:
+        - initiated
+        - identity_presented
+        - capabilities_negotiated
+        - payment_authorized
+        - provisioned
+        - failed
+
+    OnboardingState:
+      type: object
+      required: [session_id, phase, agent_did, service_did, started_at, updated_at, expires_at]
+      properties:
+        session_id:
+          type: string
+        phase:
+          $ref: "#/components/schemas/OnboardingPhase"
+        agent_did:
+          type: string
+        service_did:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        failed_reason:
+          type: string
+
+    DIDAuthChallenge:
+      type: object
+      required: [type, challenge, domain, nonce, issuedAt, expiresAt]
+      properties:
+        type:
+          type: string
+          example: "DIDAuthChallenge"
+        challenge:
+          type: string
+          description: Random challenge string the agent must sign
+        domain:
+          type: string
+          description: Domain the challenge is scoped to
+        nonce:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    DIDAuthResponse:
+      type: object
+      required: [type, challenge, did, proof]
+      properties:
+        type:
+          type: string
+          example: "DIDAuthResponse"
+        challenge:
+          type: string
+        did:
+          type: string
+        proof:
+          $ref: "#/components/schemas/Proof"
+
+    OnboardInitRequest:
+      type: object
+      required: [agent_did, presentation, requested_capabilities]
+      properties:
+        agent_did:
+          type: string
+          description: The agent's DID
+          example: "did:aicp:agent-xyz"
+        presentation:
+          $ref: "#/components/schemas/VerifiablePresentation"
+        requested_capabilities:
+          type: array
+          items:
+            type: string
+          description: Capability names the agent wishes to use
+
+    OnboardInitResponse:
+      type: object
+      required: [session_id, state]
+      properties:
+        session_id:
+          type: string
+        state:
+          $ref: "#/components/schemas/OnboardingState"
+        challenge:
+          $ref: "#/components/schemas/DIDAuthChallenge"
+
+    CapabilityOffer:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        tier:
+          type: string
+        description:
+          type: string
+
+    NegotiateRequest:
+      type: object
+      required: [session_id, offered_capabilities]
+      properties:
+        session_id:
+          type: string
+        challenge_response:
+          $ref: "#/components/schemas/DIDAuthResponse"
+        offered_capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/CapabilityOffer"
+
+    ServiceTerms:
+      type: object
+      required: [pricing_tier]
+      properties:
+        pricing_tier:
+          type: string
+        rate:
+          type: string
+        currency:
+          type: string
+        billing_cycle:
+          type: string
+        rate_limit:
+          type: integer
+          description: Requests per window
+
+    NegotiateResponse:
+      type: object
+      required: [state, approved_capabilities]
+      properties:
+        state:
+          $ref: "#/components/schemas/OnboardingState"
+        approved_capabilities:
+          type: array
+          items:
+            type: string
+        terms:
+          $ref: "#/components/schemas/ServiceTerms"
+
+    AuthorizeRequest:
+      type: object
+      required: [session_id, payment_token]
+      properties:
+        session_id:
+          type: string
+        payment_token:
+          type: string
+          description: JWS payment token obtained from /payment/token
+
+    AuthorizeResponse:
+      type: object
+      required: [state, authorized]
+      properties:
+        state:
+          $ref: "#/components/schemas/OnboardingState"
+        authorized:
+          type: boolean
+
+    ProvisionRequest:
+      type: object
+      required: [session_id]
+      properties:
+        session_id:
+          type: string
+
+    ProvisionResponse:
+      type: object
+      required: [state, account_id, credentials]
+      properties:
+        state:
+          $ref: "#/components/schemas/OnboardingState"
+        account_id:
+          type: string
+        credentials:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of service-specific credential keys to values
+        expires_at:
+          type: string
+          format: date-time
+
+    # -----------------------------------------------------------------------
+    # Verify Types
+    # -----------------------------------------------------------------------
+    VerifyRequest:
+      type: object
+      required: [did]
+      properties:
+        did:
+          type: string
+          description: DID to resolve and verify
+          example: "did:aicp:abc123"
+        presentation:
+          $ref: "#/components/schemas/VerifiablePresentation"
+
+    CredentialVerification:
+      type: object
+      required: [credential_id, type, valid]
+      properties:
+        credential_id:
+          type: string
+        type:
+          type: string
+        valid:
+          type: boolean
+        error:
+          type: string
+
+    VerifyResponse:
+      type: object
+      required: [valid, did, trust_score]
+      properties:
+        valid:
+          type: boolean
+        did:
+          type: string
+        did_document:
+          $ref: "#/components/schemas/DIDDocument"
+        delegation_chain:
+          type: array
+          items:
+            type: string
+          description: Ordered list of DIDs from agent to root principal
+        trust_score:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          description: Computed trust score (0-1000)
+        credential_results:
+          type: array
+          items:
+            $ref: "#/components/schemas/CredentialVerification"
+        errors:
+          type: array
+          items:
+            type: string
+
+    # -----------------------------------------------------------------------
+    # Payment Types
+    # -----------------------------------------------------------------------
+    MoneyAmount:
+      type: object
+      required: [value, currency]
+      properties:
+        value:
+          type: string
+          description: Decimal amount as a string
+          example: "10.00"
+        currency:
+          type: string
+          description: ISO 4217 currency code
+          example: "USD"
+
+    PaymentTokenRequest:
+      type: object
+      required: [agent_did, service_did, amount, purpose, service_category]
+      properties:
+        agent_did:
+          type: string
+        service_did:
+          type: string
+        amount:
+          $ref: "#/components/schemas/MoneyAmount"
+        max_amount:
+          $ref: "#/components/schemas/MoneyAmount"
+        purpose:
+          type: string
+          description: Payment purpose
+          enum:
+            - service-onboarding
+            - subscription-payment
+            - usage-payment
+            - one-time-purchase
+        service_category:
+          type: string
+
+    PaymentTokenResponse:
+      type: object
+      required: [token, token_id, expires_at]
+      properties:
+        token:
+          type: string
+          description: Signed JWS payment token
+        token_id:
+          type: string
+          description: Unique token identifier (JTI)
+        expires_at:
+          type: string
+          format: date-time
+
+    PaymentExecuteRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: JWS payment token to execute
+
+    PaymentExecuteResponse:
+      type: object
+      required: [payment_id, status, amount, receipt_id, receipt_hash]
+      properties:
+        payment_id:
+          type: string
+        status:
+          type: string
+        amount:
+          $ref: "#/components/schemas/MoneyAmount"
+        receipt_id:
+          type: string
+          description: Ledger receipt identifier
+        receipt_hash:
+          type: string
+          description: SHA-256 hash of the receipt record
+
+    PaymentStatusResponse:
+      type: object
+      required: [payment_id, status, amount, payer_did, payee_did, adapter, created_at]
+      properties:
+        payment_id:
+          type: string
+        status:
+          type: string
+        amount:
+          $ref: "#/components/schemas/MoneyAmount"
+        payer_did:
+          type: string
+        payee_did:
+          type: string
+        adapter:
+          type: string
+          description: Payment adapter used (e.g. stripe, paypal, usdc)
+        created_at:
+          type: string
+          format: date-time
+        settled_at:
+          type: string
+          format: date-time
+
+    # -----------------------------------------------------------------------
+    # WebSocket Types
+    # -----------------------------------------------------------------------
+    WebSocketTicketResponse:
+      type: object
+      required: [ticket]
+      properties:
+        ticket:
+          type: string
+          description: One-time authentication ticket (hex-encoded, 30 s TTL)
+
+    EventType:
+      type: string
+      enum:
+        - credential.revoked
+        - revocation_list.updated
+        - payment.authorized
+        - payment.settled
+        - payment.failed
+        - payment.refunded
+        - did.created
+        - did.updated
+        - did.deactivated
+        - key.rotated
+        - service.status_changed
+        - service.ans_updated
+        - trust_score.updated
+        - system.heartbeat
+        - system.error
+
+    Event:
+      type: object
+      description: |
+        WebSocket event envelope. After a successful WebSocket upgrade, the
+        server pushes these objects as JSON text frames.
+      required: [eventId, type, timestamp, source, subject, data, signature]
+      properties:
+        eventId:
+          type: string
+          description: Unique event identifier
+        type:
+          $ref: "#/components/schemas/EventType"
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+          description: DID of the event source
+        subject:
+          type: string
+          description: DID of the event subject
+        data:
+          type: object
+          additionalProperties: true
+          description: Event-specific payload (schema varies by event type)
+        signature:
+          type: string
+          description: JWS signature over the event payload
+
+    # -----------------------------------------------------------------------
+    # Operational Types
+    # -----------------------------------------------------------------------
+    HealthResponse:
+      type: object
+      required: [status, service, version]
+      properties:
+        status:
+          type: string
+          example: "ok"
+        service:
+          type: string
+          example: "AICP"
+        version:
+          type: string
+          example: "1.0"
+
+    ReadyResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: "ready"

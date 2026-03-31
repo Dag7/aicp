@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aicp.dev/schemas/ans-record.schema.json",
+  "title": "AICP ANS Record",
+  "description": "Agent Name Service record served at /.well-known/aicp.json. Provides machine-readable service discovery metadata.",
+  "type": "object",
+  "required": ["aicp_version", "service", "endpoints"],
+  "properties": {
+    "aicp_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the AICP protocol this record conforms to."
+    },
+    "service": {
+      "$ref": "#/$defs/ServiceInfo"
+    },
+    "onboarding": {
+      "$ref": "#/$defs/Onboarding"
+    },
+    "authentication": {
+      "$ref": "#/$defs/Authentication"
+    },
+    "pricing": {
+      "$ref": "#/$defs/Pricing"
+    },
+    "discovery_tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Tags for categorization and search within ANS registries."
+    },
+    "trust": {
+      "$ref": "#/$defs/Trust"
+    },
+    "endpoints": {
+      "$ref": "#/$defs/Endpoints"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ServiceInfo": {
+      "type": "object",
+      "required": ["name", "did"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable name of the service."
+        },
+        "did": {
+          "type": "string",
+          "description": "The DID of this service."
+        },
+        "description": {
+          "type": "string",
+          "description": "Brief description of what the service provides."
+        },
+        "category": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Categories this service belongs to."
+        },
+        "homepage": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the service's human-facing homepage."
+        },
+        "logoUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the service's logo image."
+        },
+        "tosUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the terms of service."
+        },
+        "privacyPolicyUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the privacy policy."
+        },
+        "supportContact": {
+          "type": "string",
+          "description": "Contact information for support (email or URL)."
+        },
+        "apiDocsUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the API documentation."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Core identity and metadata for this service."
+    },
+    "Onboarding": {
+      "type": "object",
+      "properties": {
+        "flows": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Supported onboarding flow types (e.g., 'automated', 'manual-review')."
+        },
+        "required_credentials": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Credential types that must be presented during onboarding."
+        },
+        "optional_credentials": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Credential types that may optionally be presented."
+        },
+        "accepted_payments": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Payment methods accepted during onboarding."
+        },
+        "minimum_trust_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Minimum trust score (0-1000) required to onboard."
+        },
+        "compliance_requirements": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Regulatory or compliance requirements the agent must satisfy."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Onboarding requirements and options for agents."
+    },
+    "Authentication": {
+      "type": "object",
+      "properties": {
+        "did_methods": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Accepted DID methods (e.g., 'did:aicp', 'did:key')."
+        },
+        "auth_protocols": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Supported authentication protocols (e.g., 'DIDAuth', 'OAuth2')."
+        },
+        "session_ttl_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Default session time-to-live in seconds."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Authentication methods and session configuration."
+    },
+    "Pricing": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": ["free", "usage", "subscription", "tiered"],
+          "description": "The pricing model used by this service."
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR')."
+        },
+        "tiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PricingTier" },
+          "description": "Available pricing tiers."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Pricing model and tier definitions."
+    },
+    "PricingTier": {
+      "type": "object",
+      "required": ["name", "rate"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name for this pricing tier."
+        },
+        "rate": {
+          "type": "string",
+          "description": "Rate description (e.g., '0.01/request', '49.99/month')."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this tier includes."
+        }
+      },
+      "additionalProperties": false,
+      "description": "A single pricing tier."
+    },
+    "Trust": {
+      "type": "object",
+      "properties": {
+        "verified_by": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "DIDs or names of entities that have verified this service."
+        },
+        "established_since": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Date the service was established or first verified."
+        },
+        "certifications": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Certifications held by this service (e.g., 'SOC2', 'ISO27001')."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Trust signals and verification history."
+    },
+    "Endpoints": {
+      "type": "object",
+      "properties": {
+        "onboard": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL for the onboarding endpoint."
+        },
+        "api_base": {
+          "type": "string",
+          "format": "uri",
+          "description": "Base URL for the service API."
+        },
+        "websocket": {
+          "type": "string",
+          "format": "uri",
+          "description": "WebSocket URL for real-time events."
+        },
+        "health": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL for the health check endpoint."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Key service endpoint URLs."
+    }
+  }
+}

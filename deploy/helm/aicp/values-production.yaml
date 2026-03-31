@@ -1,0 +1,99 @@
+# Production overrides for the AICP Helm chart.
+
+replicaCount: 5
+
+image:
+  pullPolicy: Always
+
+server:
+  logLevel: warn
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 65
+  targetMemoryUtilizationPercentage: 75
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/rate-limit-connections: "50"
+  hosts:
+    - host: api.aicp.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: aicp-tls
+      hosts:
+        - api.aicp.example.com
+
+postgresql:
+  internal: false
+  externalUrl: ""  # Set via --set or existingSecret
+  maxOpenConns: 50
+  maxIdleConns: 25
+
+redis:
+  internal: false
+  externalUrl: ""  # Set via --set or existingSecret
+  poolSize: 100
+
+commerce:
+  stripe:
+    secretKey: ""      # Set via existingSecret
+    webhookSecret: ""  # Set via existingSecret
+  paypal:
+    sandbox: false
+  usdc:
+    sandbox: false
+
+validator:
+  enabled: true
+  replicaCount: 5
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  persistence:
+    size: 50Gi
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  scrapeTimeout: 10s
+  additionalLabels:
+    release: prometheus
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - aicp
+          topologyKey: kubernetes.io/hostname
