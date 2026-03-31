@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Dev environment
+.devcontainer
+.tiltignore
+Tiltfile
+
+# Documentation
+docs/
+*.md
+!server/internal/ledger/migrations/*.sql
+
+# Build artifacts
+**/bin/
+**/dist/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+*.out
+coverage/
+
+# Test files (not needed in production image)
+**/*_test.go
+**/testdata/
+
+# SDK (not needed for server/operator images)
+sdk/
+
+# Spec (not needed at runtime)
+spec/
+
+# K8s manifests (not needed in images)
+k8s/
+deploy/helm/
+deploy/grafana/
+
+# Operator (server image doesn't need operator code)
+operator/
+
+# Tilt utilities
+utils/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Examples
+examples/

@@ -1,16 +1,17 @@
-def clear_pvc(pvc_name, namespace, labels={}):
-    """Clear a PVC for fresh dev starts.
+def clear_pvc(pvc_name, namespace='aicp', labels=['01_cleanup']):
+    """Register a manual local_resource to clear finalizers on a PVC.
 
-    Deletes the PVC either by name or by label selector so that local
-    development always starts with a clean volume.
+    Patches the PVC to remove finalizers so it can be deleted cleanly.
+    The resource is auto_init=False -- trigger it manually from the Tilt UI
+    when you need a fresh volume.
 
-    Args:
-        pvc_name: Name of the PVC to delete (used when no labels given).
-        namespace: Kubernetes namespace containing the PVC.
-        labels: Optional dict of label selectors (used instead of name when provided).
+    Returns the resource name so it can be used as a dependency.
     """
-    label_selector = ','.join(['%s=%s' % (k, v) for k, v in labels.items()])
-    if label_selector:
-        local('kubectl delete pvc -n %s -l %s --ignore-not-found=true 2>/dev/null || true' % (namespace, label_selector), quiet=True)
-    else:
-        local('kubectl delete pvc %s -n %s --ignore-not-found=true 2>/dev/null || true' % (pvc_name, namespace), quiet=True)
+    name = 'clear-%s' % pvc_name
+    local_resource(
+        name,
+        cmd="kubectl patch pvc %s -p '{\"metadata\":{\"finalizers\":null}}' --type=merge -n %s || true" % (pvc_name, namespace),
+        auto_init=False,
+        labels=labels,
+    )
+    return name

@@ -5,9 +5,9 @@ def setup_local_infra():
     # Namespace
     k8s_yaml('k8s/deployment/infra/local/namespace.yaml')
 
-    # Clear PVCs for fresh start
-    clear_pvc('postgresql-data', 'aicp', {'app': 'postgresql'})
-    clear_pvc('redis-data', 'aicp', {'app': 'redis'})
+    # PVC cleanup resources (manual trigger from Tilt UI for fresh volumes)
+    clear_pvc('postgresql-data', 'aicp')
+    clear_pvc('redis-data', 'aicp')
 
     # PostgreSQL
     k8s_yaml('k8s/deployment/infra/local/postgresql.yaml')

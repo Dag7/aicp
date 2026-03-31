@@ -8,8 +8,6 @@ allow_k8s_contexts('k3d-aicp-cluster')
 
 # ── Load utilities ──────────────────────────────────────────
 load('./utils/tilt/go.utils.tilt', 'go_service')
-load('./utils/tilt/k8s/namespace.utils.tilt', 'create_namespace')
-load('./utils/tilt/k8s/pvc.utils.tilt', 'clear_pvc')
 load('./utils/tilt/k8s/helm.utils.tilt', 'ensure_helm_deps')
 
 # Load AICP server Helm chart setup
@@ -21,9 +19,10 @@ load('./k8s/deployment/infra/local/Tiltfile', 'setup_local_infra')
 setup_local_infra()
 
 # ── Database Migrations ─────────────────────────────────────
-# Run migrations after PostgreSQL is ready. Uses port-forwarded local address.
+# Run migrations after PostgreSQL is ready. The 'postgres' build tag includes
+# the PostgreSQL driver in the migrate CLI binary.
 local_resource('db-migrate',
-    cmd='cd server && go run github.com/golang-migrate/migrate/v4/cmd/migrate@latest -path internal/ledger/migrations -database "postgres://aicp:aicp_dev@localhost:5432/aicp?sslmode=disable" up',
+    cmd='cd server && go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@latest -path internal/ledger/migrations -database "postgres://aicp:aicp_dev@localhost:5432/aicp?sslmode=disable" up',
     resource_deps=['postgresql'],
     labels=['00_setup'],
 )
@@ -46,15 +45,18 @@ k8s_resource('aicp-server',
 )
 
 # ── Operator ────────────────────────────────────────────────
-# Build operator image from the operator-sdk generated Dockerfile
+# Build operator image -- matches 'controller:latest' referenced by kustomize
 docker_build(
-    'aicp-operator',
+    'controller',
     context='./operator',
     dockerfile='./operator/Dockerfile',
 )
 
-# Apply CRDs directly from bases (no kustomize namePrefix needed for CRDs)
-k8s_yaml(kustomize('./operator/config/crd'))
+# Apply all operator resources via kustomize (CRDs + RBAC + Manager deployment).
+# config/default properly namespaces everything under aicp-operator-system.
+k8s_yaml(kustomize('./operator/config/default'))
+
+# Group CRDs
 k8s_resource(
     new_name='operator-crds',
     objects=[
@@ -64,99 +66,32 @@ k8s_resource(
     labels=['00_operator'],
 )
 
-# Operator namespace
-create_namespace('aicp-operator-system')
-
-# Apply RBAC via kustomize (includes service account, roles, bindings)
-k8s_yaml(kustomize('./operator/config/rbac'))
+# Group RBAC + supporting objects
 k8s_resource(
     new_name='operator-rbac',
     objects=[
         'aicp-operator-system:namespace',
-        'controller-manager:serviceaccount',
-        'manager-role:clusterrole',
-        'manager-rolebinding:clusterrolebinding',
-        'leader-election-role:role',
-        'leader-election-role-binding:rolebinding',
-        'metrics-auth-role:clusterrole',
-        'metrics-auth-role-binding:clusterrolebinding',
-        'metrics-reader:clusterrole',
-        'aicpcluster-admin-role:clusterrole',
-        'aicpcluster-editor-role:clusterrole',
-        'aicpcluster-viewer-role:clusterrole',
-        'aicpvalidator-admin-role:clusterrole',
-        'aicpvalidator-editor-role:clusterrole',
-        'aicpvalidator-viewer-role:clusterrole',
+        'aicp-operator-controller-manager:serviceaccount',
+        'aicp-operator-leader-election-role:role',
+        'aicp-operator-manager-role:clusterrole',
+        'aicp-operator-metrics-auth-role:clusterrole',
+        'aicp-operator-metrics-reader:clusterrole',
+        'aicp-operator-aicpcluster-admin-role:clusterrole',
+        'aicp-operator-aicpcluster-editor-role:clusterrole',
+        'aicp-operator-aicpcluster-viewer-role:clusterrole',
+        'aicp-operator-aicpvalidator-admin-role:clusterrole',
+        'aicp-operator-aicpvalidator-editor-role:clusterrole',
+        'aicp-operator-aicpvalidator-viewer-role:clusterrole',
+        'aicp-operator-leader-election-rolebinding:rolebinding',
+        'aicp-operator-manager-rolebinding:clusterrolebinding',
+        'aicp-operator-metrics-auth-rolebinding:clusterrolebinding',
     ],
     labels=['00_operator'],
 )
 
-# Deploy operator manager as a simple Deployment for local dev.
-# Uses --leader-elect=false since we run a single replica locally.
-k8s_yaml(blob("""
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: aicp-operator
-  namespace: aicp-operator-system
-  labels:
-    control-plane: controller-manager
-    app.kubernetes.io/name: aicp-operator
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      control-plane: controller-manager
-      app.kubernetes.io/name: aicp-operator
-  template:
-    metadata:
-      labels:
-        control-plane: controller-manager
-        app.kubernetes.io/name: aicp-operator
-    spec:
-      serviceAccountName: controller-manager
-      securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-      - name: manager
-        image: aicp-operator
-        command:
-        - /manager
-        args:
-        - --leader-elect=false
-        - --health-probe-bind-address=:8081
-        ports:
-        - containerPort: 8081
-          name: health
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8081
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8081
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-        resources:
-          limits:
-            cpu: 500m
-            memory: 256Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
-"""))
-
-k8s_resource('aicp-operator',
+# Operator deployment (from kustomize, image auto-matched by docker_build).
+# The metrics service is auto-associated with this deployment by Tilt.
+k8s_resource('aicp-operator-controller-manager',
     resource_deps=['operator-crds', 'operator-rbac'],
     labels=['00_operator'],
 )
@@ -166,7 +101,7 @@ k8s_resource('aicp-operator',
 # Manual trigger only -- use the Tilt UI button to apply.
 local_resource('apply-sample-cr',
     cmd='kubectl apply -f operator/config/samples/ -n aicp',
-    resource_deps=['aicp-operator'],
+    resource_deps=['aicp-operator-controller-manager'],
     auto_init=False,
     labels=['00_operator'],
 )

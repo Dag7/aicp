@@ -3,7 +3,7 @@
 # ============================================================================
 # Stage 1: Build the operator manager binary
 # ============================================================================
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache ca-certificates tzdata git
 
@@ -30,7 +30,7 @@ RUN go build \
         -X main.commitSHA=${COMMIT_SHA} \
         -X main.buildTime=${BUILD_TIME}" \
     -o /out/manager \
-    ./cmd/manager/main.go
+    ./cmd/main.go
 
 # ============================================================================
 # Stage 2: Minimal production image

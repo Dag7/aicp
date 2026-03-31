@@ -1,3 +1,18 @@
 # More info: https://docs.docker.com/engine/reference/builder/#dockerignore-file
-# Ignore build and test binaries.
+# Build and test binaries
 bin/
+
+# Config (not needed in image - mounted at runtime)
+config/
+
+# Test files
+**/*_test.go
+**/testdata/
+
+# IDE
+.vscode/
+*.swp
+
+# Docs
+*.md
+

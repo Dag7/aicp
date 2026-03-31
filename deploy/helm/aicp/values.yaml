@@ -66,6 +66,14 @@ server:
   idleTimeout: "120s"
   # -- Graceful shutdown timeout
   shutdownTimeout: "15s"
+  # -- Service DID (set in production)
+  serviceDID: ""
+  # -- CORS allowed origins (comma-separated or list)
+  allowedOrigins: []
+  # -- Rate limit: max requests per window
+  rateLimitMax: 100
+  # -- Rate limit: time window
+  rateLimitWindow: "1m"
 
 # Service configuration
 service:

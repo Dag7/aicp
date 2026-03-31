@@ -65,13 +65,13 @@ tasks:
     desc: Run all pending database migrations
     dir: '{{.SERVER_DIR}}'
     cmds:
-      - go run -tags migrate ./cmd/aicp-server migrate up
+      - go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@latest -path internal/ledger/migrations -database "${AICP_DATABASE_URL}" up
 
   migrate:down:
     desc: Rollback the last database migration
     dir: '{{.SERVER_DIR}}'
     cmds:
-      - go run -tags migrate ./cmd/aicp-server migrate down 1
+      - go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@latest -path internal/ledger/migrations -database "${AICP_DATABASE_URL}" down 1
 
   migrate:create:
     desc: Create a new migration (usage: task migrate:create -- name_of_migration)
@@ -210,6 +210,34 @@ tasks:
       - task: operator:build
       - task: operator:test
 
+  # ─── Development Environment ──────────────────────────────────
+  dev:start:
+    desc: Start full dev environment (k3d + tilt)
+    cmds:
+      - bash scripts/dev-start.sh
+
+  dev:test:
+    desc: Run e2e tests against running dev environment
+    cmds:
+      - bash scripts/e2e-test.sh
+
+  dev:cluster:init:
+    desc: Create/start k3d cluster
+    dir: .devcontainer/k3s
+    cmds:
+      - bash init-cluster.sh
+
+  dev:cluster:stop:
+    desc: Stop k3d cluster (preserves state)
+    cmds:
+      - bash .devcontainer/k3s/stop-cluster.sh
+
+  dev:cluster:clean:
+    desc: Delete k3d cluster (destroys everything)
+    cmds:
+      - bash .devcontainer/k3s/clean-cluster.sh
+
+  # ─── Cleanup ─────────────────────────────────────────────────
   clean:
     desc: Remove build artifacts
     cmds:
