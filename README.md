@@ -15,14 +15,6 @@ AICP provides AI agents with the foundational infrastructure to participate as f
 
 ## Quick Start
 
-### Prerequisites
-
-- Go 1.22+
-- PostgreSQL 16+
-- Redis 7+
-- [Task](https://taskfile.dev) (build runner)
-- Docker (optional, for containerized deployment)
-
 ### Run with Docker Compose
 
 ```bash
@@ -31,20 +23,14 @@ cd aicp
 task docker:up
 ```
 
-This starts the AICP server, PostgreSQL, and Redis. The API is available at `http://localhost:8080`.
+Server API at `http://localhost:8080`, metrics at `http://localhost:9090`.
 
 ### Build from Source
 
 ```bash
-# Build the server
 task build
-
-# Run migrations
 export AICP_DATABASE_URL="postgres://aicp:aicp@localhost:5432/aicp?sslmode=disable"
-export AICP_REDIS_URL="redis://localhost:6379"
 task migrate:up
-
-# Start the server
 ./bin/aicp-server
 ```
 
@@ -52,12 +38,12 @@ task migrate:up
 
 ```bash
 curl http://localhost:8080/health
-curl http://localhost:8080/.well-known/aicp.json
+# {"status":"ok","version":"dev","protocol":"1.0"}
 ```
 
 ## SDKs
 
-### TypeScript (Agent Developer)
+### TypeScript
 
 ```typescript
 import { AICPAgent } from '@aicp/sdk';
@@ -67,16 +53,11 @@ const agent = await AICPAgent.create({
   principalToken: process.env.AICP_PRINCIPAL_TOKEN,
 });
 
-// Discover services
-const results = await agent.discovery.search({
-  tags: ['cloud-compute', 'container-hosting'],
-});
-
-// Onboard (identity -> negotiate -> authorize -> provision)
+const results = await agent.discovery.search({ tags: ['cloud-compute'] });
 const session = await agent.onboard(results.services[0], { tier: 'starter' });
 ```
 
-### Python (Agent Developer)
+### Python
 
 ```python
 from aicp import AICPAgent
@@ -90,9 +71,7 @@ results = await agent.discovery.search(tags=["cloud-compute"])
 session = await agent.onboard(results.services[0], tier="starter")
 ```
 
-### Service Provider Integration (~200 lines)
-
-Implement the `AICPServiceAdapter` interface to accept AI agent customers:
+### Service Provider (~200 lines)
 
 ```typescript
 import { createAICPMiddleware, AICPServiceAdapter } from '@aicp/sdk';
@@ -110,8 +89,6 @@ app.use('/aicp', createAICPMiddleware(new MyServiceAdapter()));
 
 ## Architecture
 
-AICP runs entirely over HTTP/REST and WebSocket. The consortium ledger uses PostgreSQL with append-only blocks, Merkle roots, and multi-node validator consensus.
-
 ```
 ┌─────────────────────────────────────────────┐
 │              AICP Protocol Server            │
@@ -126,23 +103,53 @@ AICP runs entirely over HTTP/REST and WebSocket. The consortium ledger uses Post
 └─────────────────────────────────────────────┘
 ```
 
+See [docs/architecture.md](docs/architecture.md) for detailed design, interfaces, and patterns.
+
+## Repository Structure
+
+```
+server/          Go protocol server (chi, pgx, go-redis)
+  cmd/aicp-server/   Server entry point
+  cmd/aicp/          CLI tool (cobra)
+  internal/          Protocol implementation (identity, discovery, onboarding, commerce)
+  pkg/aicp/          Public Go types and error codes
+operator/        K8s operator for consortium ledger management
+sdk/typescript/  TypeScript client SDK (@aicp/sdk)
+sdk/python/      Python client SDK (aicp)
+spec/            OpenAPI 3.1 + JSON Schema (protocol source of truth)
+deploy/          Docker, Helm charts, Grafana dashboards
+docs/            Protocol spec, architecture, guides
+```
+
 ## Complementary to Existing Protocols
 
-AICP does not compete with existing protocols. It provides the identity and discovery substrate they need:
+AICP provides the identity and discovery substrate that existing protocols need:
 
-- **A2A** (Google): AICP-credentialed agents authenticate to A2A servers using their DID
+- **A2A** (Google): AICP-credentialed agents authenticate to A2A servers
 - **MCP** (Anthropic): Agents access MCP tool servers with verifiable authorization
-- **ACP** (Stripe/OpenAI): Agents initiate ACP checkout with cryptographically scoped payment tokens
+- **ACP** (Stripe/OpenAI): Agents initiate ACP checkout with scoped payment tokens
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/architecture.md) | System design, patterns, interfaces, API reference |
+| [Development](docs/development.md) | Dev environment setup (devcontainer, k3d, Tilt) |
+| [Deployment](docs/deployment.md) | Docker, Helm, K8s operator, monitoring |
+| [Contributing](CONTRIBUTING.md) | Code style, workflow, how to add adapters |
+| [Protocol Spec](docs/spec/) | Layer-by-layer protocol specification |
+| [API Spec](spec/openapi.yaml) | OpenAPI 3.1 endpoint definitions |
 
 ## Development
 
 ```bash
 task check        # Format, vet, lint, test
 task all          # Build and test everything
-task docker:up    # Start local development stack
+task dev:start    # Start full dev environment (k3d + Tilt)
+task dev:test     # Run e2e tests against live cluster
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+See [docs/development.md](docs/development.md) for the full dev environment guide.
 
 ## License
 
