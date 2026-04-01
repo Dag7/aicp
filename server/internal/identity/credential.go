@@ -168,6 +168,24 @@ func (cm *CredentialManager) RevokeCredential(ctx context.Context, credentialID 
 	return cm.backend.RevokeCredential(ctx, credentialID, proof)
 }
 
+// RevokeCredentialByID revokes a credential by its ID using the ledger's
+// revocation mechanism. This is used by the HTTP API where the caller's
+// authorization is handled at the handler/middleware level.
+func (cm *CredentialManager) RevokeCredentialByID(ctx context.Context, credentialID string) error {
+	_, err := cm.backend.GetCredential(ctx, credentialID)
+	if err != nil {
+		return fmt.Errorf("getting credential: %w", err)
+	}
+
+	proof := aicp.Proof{
+		Type:         aicp.ProofTypeEd25519Sig2020,
+		Created:      time.Now().UTC(),
+		ProofPurpose: aicp.ProofPurposeAssertion,
+	}
+
+	return cm.backend.RevokeCredential(ctx, credentialID, proof)
+}
+
 // GetCredential retrieves a credential by ID.
 func (cm *CredentialManager) GetCredential(ctx context.Context, credentialID string) (*aicp.VerifiableCredential, error) {
 	return cm.backend.GetCredential(ctx, credentialID)

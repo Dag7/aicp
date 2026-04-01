@@ -29,8 +29,9 @@ const (
 	StatusRefunded        = "refunded"
 	StatusSucceeded       = "succeeded"
 	StatusPending         = "pending"
-	StatusCreated         = "CREATED"
-	StatusCompleted       = "COMPLETED"
+	StatusCreated          = "CREATED"
+	StatusCompleted        = "COMPLETED"
+	StatusPendingApproval  = "pending_approval"
 )
 
 // Identity constants.

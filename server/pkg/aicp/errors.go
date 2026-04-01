@@ -28,6 +28,10 @@ var (
 	ErrInsufficientSigs    = errors.New("insufficient validator signatures")
 	ErrSpendingLimitExceeded = errors.New("spending limit exceeded")
 	ErrServiceUnavailable  = errors.New("service unavailable")
+	ErrCapabilityDenied    = errors.New("capability denied")
+	ErrApprovalRequired    = errors.New("approval required")
+	ErrApprovalExpired     = errors.New("approval expired")
+	ErrApprovalDenied      = errors.New("approval denied")
 )
 
 // ProtocolError represents a structured error returned to API clients.
@@ -89,6 +93,11 @@ var (
 	ErrCodeInvalidPhase      = NewProtocolError(http.StatusBadRequest, "INVALID_PHASE", "invalid onboarding phase transition")
 	ErrCodeSessionExpired    = NewProtocolError(http.StatusGone, "SESSION_EXPIRED", "the onboarding session has expired")
 	ErrCodePaymentFailed     = NewProtocolError(http.StatusPaymentRequired, "PAYMENT_FAILED", "payment processing failed")
+	ErrCodeCapabilityDenied  = NewProtocolError(http.StatusForbidden, "CAPABILITY_DENIED", "the agent does not have the required capability")
+	ErrCodeApprovalRequired  = NewProtocolError(http.StatusAccepted, "APPROVAL_REQUIRED", "the transaction requires principal approval")
+	ErrCodeApprovalExpired   = NewProtocolError(http.StatusGone, "APPROVAL_EXPIRED", "the approval request has expired")
+	ErrCodeApprovalDenied    = NewProtocolError(http.StatusForbidden, "APPROVAL_DENIED", "the principal denied the transaction")
+	ErrCodeApprovalNotFound  = NewProtocolError(http.StatusNotFound, "APPROVAL_NOT_FOUND", "the approval request was not found")
 )
 
 // IsProtocolError checks whether an error is a ProtocolError and returns it.

@@ -41,6 +41,7 @@ type RouterConfig struct {
 	// Commerce layer
 	TokenIssuer           *commerce.TokenIssuer
 	PaymentExecutor       *commerce.PaymentExecutor
+	ApprovalService       *commerce.ApprovalService
 	IssuerPubKeyMultibase string
 
 	// Onboarding layer
@@ -127,6 +128,21 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			r.Post("/payment/token", payment.RequestToken)
 			r.Post("/payment/execute", payment.Execute)
 			r.Get("/payment/status/{id}", payment.Status)
+		}
+
+		// Payment Approvals
+		if cfg.ApprovalService != nil {
+			approval := handlers.NewApprovalHandler(cfg.ApprovalService)
+			r.Get("/payment/approval/{id}", approval.GetApproval)
+			r.Post("/payment/approval/{id}/approve", approval.Approve)
+			r.Post("/payment/approval/{id}/deny", approval.Deny)
+			r.Get("/payment/approvals/pending", approval.ListPending)
+		}
+
+		// Credentials
+		if cfg.CredentialManager != nil {
+			cred := handlers.NewCredentialHandler(cfg.CredentialManager)
+			r.Post("/credentials/{id}/revoke", cred.Revoke)
 		}
 
 		// WebSocket ticket

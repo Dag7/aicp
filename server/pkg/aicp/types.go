@@ -402,6 +402,33 @@ type PaymentExecuteResponse struct {
 	Amount      MoneyAmount `json:"amount"`
 	ReceiptID   string      `json:"receipt_id"`
 	ReceiptHash string      `json:"receipt_hash"`
+	ApprovalID  string      `json:"approval_id,omitempty"`
+}
+
+// ─── Approval Types ─────────────────────────────────────────────────────────
+
+// ApprovalResponse is returned from approval-related endpoints.
+type ApprovalResponse struct {
+	ApprovalID   string    `json:"approval_id"`
+	AgentDID     string    `json:"agent_did"`
+	PrincipalDID string    `json:"principal_did"`
+	Amount       MoneyAmount `json:"amount"`
+	Purpose      string    `json:"purpose"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"created_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	DecidedAt    *time.Time `json:"decided_at,omitempty"`
+	DecidedBy    string    `json:"decided_by,omitempty"`
+}
+
+// ApprovalDecisionRequest is the body for approve/deny endpoints.
+type ApprovalDecisionRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// CredentialRevokeRequest is the body of POST /aicp/v1/credentials/{id}/revoke.
+type CredentialRevokeRequest struct {
+	Reason string `json:"reason,omitempty"`
 }
 
 // PaymentStatusResponse is returned from GET /aicp/v1/payment/status/{id}.
@@ -543,8 +570,10 @@ const (
 	EventServiceStatusChanged  EventType = "service.status_changed"
 	EventServiceANSUpdated     EventType = "service.ans_updated"
 	EventTrustScoreUpdated     EventType = "trust_score.updated"
-	EventHeartbeat             EventType = "system.heartbeat"
-	EventError                 EventType = "system.error"
+	EventPaymentApprovalRequired EventType = "payment.approval_required"
+	EventPaymentApprovalDecided  EventType = "payment.approval_decided"
+	EventHeartbeat               EventType = "system.heartbeat"
+	EventError                   EventType = "system.error"
 )
 
 // Event is the envelope for all WebSocket events.

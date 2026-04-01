@@ -2,12 +2,14 @@ package commerce
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/aicp-protocol/aicp/server/internal/commerce/adapter"
 	"github.com/aicp-protocol/aicp/server/internal/crypto"
+	"github.com/aicp-protocol/aicp/server/internal/identity"
 	"github.com/aicp-protocol/aicp/server/internal/ledger"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
@@ -15,12 +17,14 @@ import (
 const defaultPaymentAdapter = "sandbox"
 
 // PaymentExecutor orchestrates the full payment lifecycle:
-// token validation -> spending limit check -> payment intent -> capture -> receipt.
+// token validation -> spending limit check -> approval check -> payment intent -> capture -> receipt.
 type PaymentExecutor struct {
 	registry   *adapter.Registry
 	validator  *TokenValidator
 	spending   *SpendingTracker
 	receipts   *ReceiptGenerator
+	approval   *ApprovalService
+	delegation *identity.DelegationVerifier
 	backend    ledger.LedgerBackend
 	logger     *slog.Logger
 }
@@ -44,6 +48,18 @@ func NewPaymentExecutor(
 	}
 }
 
+// WithApprovalService sets the approval service for high-value transaction workflows.
+func (pe *PaymentExecutor) WithApprovalService(approval *ApprovalService) *PaymentExecutor {
+	pe.approval = approval
+	return pe
+}
+
+// WithDelegationVerifier sets the delegation verifier for spending authorization lookups.
+func (pe *PaymentExecutor) WithDelegationVerifier(delegation *identity.DelegationVerifier) *PaymentExecutor {
+	pe.delegation = delegation
+	return pe
+}
+
 // Execute processes a payment token through the full payment pipeline.
 func (pe *PaymentExecutor) Execute(ctx context.Context, token string, issuerPubKeyMultibase string) (*aicp.PaymentExecuteResponse, error) {
 	claims, err := pe.validateToken(ctx, token, issuerPubKeyMultibase)
@@ -53,6 +69,16 @@ func (pe *PaymentExecutor) Execute(ctx context.Context, token string, issuerPubK
 	if err := pe.enforceSpendingLimits(ctx, claims); err != nil {
 		return nil, err
 	}
+
+	// Check if the transaction requires principal approval.
+	resp, err := pe.checkApproval(ctx, claims)
+	if err != nil {
+		return nil, err
+	}
+	if resp != nil {
+		return resp, nil
+	}
+
 	if err := pe.validator.MarkUsed(ctx, claims.JTI); err != nil {
 		return nil, fmt.Errorf("marking token used: %w", err)
 	}
@@ -74,6 +100,63 @@ func (pe *PaymentExecutor) Execute(ctx context.Context, token string, issuerPubK
 		PaymentID: intent.IntentID, Status: capture.Status,
 		Amount: claims.PaymentDetails.Amount, ReceiptID: receipt.ReceiptID,
 		ReceiptHash: receipt.ReceiptHash,
+	}, nil
+}
+
+// checkApproval verifies whether principal approval is required for this transaction.
+// Returns a pending_approval response if approval is needed, nil otherwise.
+func (pe *PaymentExecutor) checkApproval(ctx context.Context, claims *aicp.PaymentTokenClaims) (*aicp.PaymentExecuteResponse, error) {
+	if pe.approval == nil {
+		return nil, nil
+	}
+
+	needsApproval, _, err := pe.approval.CheckApprovalRequired(ctx, claims.Subject, claims.PaymentDetails.Amount)
+	if err != nil {
+		// Log but don't block the payment if approval check fails gracefully.
+		if errors.Is(err, aicp.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("checking approval requirement: %w", err)
+	}
+	if !needsApproval {
+		return nil, nil
+	}
+
+	// Resolve the principal DID for the approval request.
+	principalDID := claims.PaymentDetails.PrincipalDID
+	if principalDID == "" && pe.delegation != nil {
+		chain, err := pe.delegation.VerifyDelegation(ctx, claims.Subject)
+		if err == nil && chain.Valid {
+			principalDID = chain.PrincipalDID
+		}
+	}
+	if principalDID == "" {
+		return nil, fmt.Errorf("cannot determine principal for approval: agent %s", claims.Subject)
+	}
+
+	pending, err := pe.approval.RequestApproval(ctx, PendingApproval{
+		AgentDID:     claims.Subject,
+		PrincipalDID: principalDID,
+		Amount:       claims.PaymentDetails.Amount,
+		Purpose:      claims.PaymentDetails.Purpose,
+		TokenJTI:     claims.JTI,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("requesting approval: %w", err)
+	}
+
+	pe.logger.Info("payment requires approval",
+		"approval_id", pending.ApprovalID,
+		"agent_did", claims.Subject,
+		"principal_did", principalDID,
+		"amount", claims.PaymentDetails.Amount.Value,
+		"currency", claims.PaymentDetails.Amount.Currency,
+	)
+
+	return &aicp.PaymentExecuteResponse{
+		Status:     aicp.StatusPendingApproval,
+		Amount:     claims.PaymentDetails.Amount,
+		ApprovalID: pending.ApprovalID,
 	}, nil
 }
 

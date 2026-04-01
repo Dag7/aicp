@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -129,6 +130,9 @@ func run() error {
 	ansMgr := discovery.NewANSManager(backend)
 	wellKnownSvc := discovery.NewWellKnownService(ansMgr)
 
+	// ── Event System ────────────────────────────────────────────────────
+	emitter := events.NewEmitter(logger)
+
 	// ── Commerce Layer ──────────────────────────────────────────────────
 	tokenIssuer, err := commerce.NewTokenIssuer(serverKP, cfg.Commerce.PaymentTokenTTL)
 	if err != nil {
@@ -143,15 +147,61 @@ func run() error {
 		adapterRegistry, tokenValidator, spendingTracker, receiptGen, backend, logger,
 	)
 
+	// ── Approval Service ───────────────────────────────────────────────
+	approvalSvc := commerce.NewApprovalService(rdb, delegationVerifier, emitter, logger)
+	paymentExecutor = paymentExecutor.
+		WithApprovalService(approvalSvc).
+		WithDelegationVerifier(delegationVerifier)
+
 	// ── Onboarding Layer ────────────────────────────────────────────────
 	sessionMgr := onboarding.NewSessionManager(rdb, 30*time.Minute)
 	challengeSvc := onboarding.NewChallengeService(rdb, serverDID)
 	trustComputer := onboarding.NewTrustComputer(backend)
 	rateLimiter := onboarding.NewRateLimiter(rdb, 100, 1000, cfg.Server.RateLimitWindow)
 
-	// ── Event System ────────────────────────────────────────────────────
-	emitter := events.NewEmitter(logger)
-	_ = emitter // Subscriptions will be wired as features are exercised.
+	// ── Consensus & Block Production ───────────────────────────────────
+	validatorMgr := ledger.NewValidatorManager(backend)
+
+	grpcAddr := fmt.Sprintf("0.0.0.0:%d", cfg.Ledger.GRPCPort)
+	validator, err := validatorMgr.RegisterLocal(ctx, serverKP, grpcAddr)
+	if err != nil {
+		return fmt.Errorf("registering local validator: %w", err)
+	}
+	validatorDID := validator.DID
+
+	consensus := ledger.NewConsensusEngine(backend, validatorDID, ed25519.PrivateKey(serverKP.PrivateKey), logger)
+	if err := consensus.RefreshValidators(ctx); err != nil {
+		return fmt.Errorf("refreshing validators: %w", err)
+	}
+
+	blockProducer := ledger.NewBlockProducer(backend, consensus, cfg.Ledger.BlockInterval, logger)
+
+	// Create genesis block if no blocks exist yet.
+	if _, err := backend.GetLatestBlock(ctx); errors.Is(err, aicp.ErrNotFound) {
+		genesisHash := ledger.BuildBlockHash(0,
+			"0000000000000000000000000000000000000000000000000000000000000000",
+			crypto.SHA256Hex([]byte("genesis")),
+			validatorDID,
+		)
+		genesisSignature, err := crypto.SignJSON(serverKP.PrivateKey, []byte(genesisHash))
+		if err != nil {
+			return fmt.Errorf("signing genesis block: %w", err)
+		}
+		genesis := ledger.BuildGenesisBlock(validatorDID, genesisSignature)
+		if err := backend.StoreBlock(ctx, genesis); err != nil {
+			return fmt.Errorf("storing genesis block: %w", err)
+		}
+		slog.Info("genesis block created", "hash", genesis.Hash)
+	}
+
+	blockProducer.Start(ctx)
+	defer blockProducer.Stop()
+
+	// BlockSyncer prepared for future gRPC transport integration.
+	blockSyncer := ledger.NewBlockSyncer(backend, consensus, logger)
+	_ = blockSyncer
+
+	slog.Info("consensus engine started", "validator_did", validatorDID, "block_interval", cfg.Ledger.BlockInterval)
 
 	// ── WebSocket ───────────────────────────────────────────────────────
 	wsHub := websocketpkg.NewHub(logger)
@@ -172,6 +222,7 @@ func run() error {
 
 		TokenIssuer:           tokenIssuer,
 		PaymentExecutor:       paymentExecutor,
+		ApprovalService:       approvalSvc,
 		IssuerPubKeyMultibase: issuerPubKeyMultibase,
 
 		SessionManager:   sessionMgr,
