@@ -18,11 +18,12 @@ server/          Go protocol server (chi router, PostgreSQL, Redis)
   internal/
     config/      Env/YAML config with validation
     crypto/      Ed25519, signing, JWS (go-jose/v4), Merkle trees, base58
-    identity/    Layer 1: DID lifecycle, credentials, delegation, revocation
-    discovery/   Layer 2: ANS records, tiered resolver, search, well-known
+    identity/    Layer 1: DID lifecycle, credentials, delegation, revocation, multi-DID resolution, capabilities, OIDC bridge
+    discovery/   Layer 2: ANS records, tiered resolver, federated search, well-known, peer registry
     onboarding/  Layer 3: 4-phase state machine, sessions, challenges, trust
     commerce/    Layer 4: Payment tokens (JWS), executor, spending, adapters, approvals
     ledger/      Consortium ledger: PostgreSQL backend, blocks, consensus, sync
+    mcp/         MCP server: JSON-RPC 2.0 over stdio, exposes AICP as MCP tools
       transport/ HTTP-based validator-to-validator communication
     api/         HTTP router (chi), handlers, middleware, WebSocket hub
       handlers/  DID, discovery, onboarding, payment, approval, credential, trust, verify
@@ -355,11 +356,45 @@ IDs are base58btc-encoded truncated SHA-256 (first 16 bytes) of the public key.
 
 ### CLI (`server/cmd/aicp/`)
 - Built with cobra for subcommand structure
-- Commands: `did`, `credential`, `discover`, `onboard`, `payment`, `server`, `key`
+- Commands: `did`, `credential`, `discover`, `onboard`, `payment`, `server`, `key`, `mcp`
 - Output formats: `--output json|table|yaml`
 - Config: `~/.aicp/config.yaml` for server URL, default DID, key paths
 - Key storage: `~/.aicp/keys/` for Ed25519 key pairs
 - Designed for agent automation (JSON output, exit codes) and human use (table output, colors)
+- `aicp mcp` starts an MCP server over stdio exposing all AICP operations as tools
+
+### MCP Server (`server/internal/mcp/`)
+- JSON-RPC 2.0 over stdio (standard MCP transport)
+- Exposes 16+ AICP tools: identity, discovery, onboarding, commerce, verification
+- Thin adapter layer: forwards tool calls to the AICP REST API
+- Tool names: `aicp_did_create`, `aicp_did_resolve`, `aicp_discover_search`, `aicp_onboard_initiate`, `aicp_payment_request_token`, `aicp_verify`, `aicp_trust_score`, etc.
+- Supports resources and resource reading
+- Usage: `aicp mcp --server http://localhost:8080`
+
+### Multi-DID Method Resolution (`server/internal/identity/resolver.go`)
+- Strategy pattern: `DIDMethodResolver` interface with `Method()` and `Resolve()`
+- `MultiMethodResolver` registry dispatches by DID method prefix
+- Built-in resolvers: `did:aicp` (ledger-backed), `did:key` (stateless), `did:web` (HTTP-based)
+- `did:key` derives DID Document from multibase-encoded public key
+- `did:web` fetches DID Document from `https://domain/.well-known/did.json`
+
+### Federated ANS (`server/internal/discovery/resolver.go`)
+- 3-tier resolution: local ledger → domain (.well-known) → federated peers
+- `PeerRegistry` manages known federation peers (thread-safe)
+- `FederatedSearch` queries all peers in parallel, deduplicates results
+- Federation requests include `X-AICP-Federation: true` header
+
+### Capability-Based Access Control (`server/internal/identity/capabilities.go`)
+- Fine-grained `CapabilityType` enums: `payment:read`, `did:create`, `credential:issue`, etc.
+- `CapabilityChecker` verifies capabilities via delegation chain inspection
+- Supports exact match, wildcard `*`, hierarchical `payment:*`, and category matching
+- `CapabilityGrant` for resource-scoped permissions with conditions
+
+### OIDC Bridge (`server/internal/identity/oidc.go`)
+- Maps AICP DIDs to OpenID Connect ID tokens (JWS/EdDSA)
+- Custom claims: `aicp_did`, `aicp_principal`, `aicp_capabilities`, `aicp_trust_score`
+- Standard OIDC discovery (`/.well-known/openid-configuration`) and JWKS endpoints
+- Token verification with expiration and issuer validation
 
 ### Implementation Notes
 - Response helpers live in `handlers` package (not `api`) to avoid import cycles

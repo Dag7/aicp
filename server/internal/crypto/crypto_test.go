@@ -411,3 +411,70 @@ func TestJWS_VerifyClaimsWithExpiry_Expired(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "token expired")
 }
+
+// --- Standalone SignJWS / VerifyJWS ---
+
+func TestSignJWS_AndVerifyJWS(t *testing.T) {
+	kp, err := GenerateEd25519KeyPair()
+	require.NoError(t, err)
+
+	payload := []byte(`{"sub":"did:aicp:test","iss":"https://idp.example.com"}`)
+
+	token, err := SignJWS(kp.PrivateKey, payload, "JWT")
+	require.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	decoded, err := VerifyJWS(kp.PublicKey, token)
+	require.NoError(t, err)
+
+	var claims map[string]string
+	require.NoError(t, json.Unmarshal(decoded, &claims))
+	assert.Equal(t, "did:aicp:test", claims["sub"])
+	assert.Equal(t, "https://idp.example.com", claims["iss"])
+}
+
+func TestSignJWS_EmptyType(t *testing.T) {
+	kp, err := GenerateEd25519KeyPair()
+	require.NoError(t, err)
+
+	token, err := SignJWS(kp.PrivateKey, []byte("hello"), "")
+	require.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	decoded, err := VerifyJWS(kp.PublicKey, token)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello"), decoded)
+}
+
+func TestVerifyJWS_WrongKey(t *testing.T) {
+	kp1, _ := GenerateEd25519KeyPair()
+	kp2, _ := GenerateEd25519KeyPair()
+
+	token, err := SignJWS(kp1.PrivateKey, []byte("secret"), "JWT")
+	require.NoError(t, err)
+
+	_, err = VerifyJWS(kp2.PublicKey, token)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "verifying JWS signature")
+}
+
+func TestVerifyJWS_InvalidToken(t *testing.T) {
+	kp, _ := GenerateEd25519KeyPair()
+
+	_, err := VerifyJWS(kp.PublicKey, "not-a-jws-token")
+	assert.Error(t, err)
+}
+
+func TestSignJWS_DifferentTypes(t *testing.T) {
+	kp, _ := GenerateEd25519KeyPair()
+
+	types := []string{"JWT", "aicp-payment-token+jws", "at+jwt", ""}
+	for _, typ := range types {
+		token, err := SignJWS(kp.PrivateKey, []byte(`{"test":true}`), typ)
+		require.NoError(t, err, "type: %s", typ)
+
+		decoded, err := VerifyJWS(kp.PublicKey, token)
+		require.NoError(t, err, "type: %s", typ)
+		assert.Contains(t, string(decoded), "test")
+	}
+}

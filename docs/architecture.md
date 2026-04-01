@@ -41,12 +41,12 @@ This document describes the AICP server architecture, design patterns, and key i
 server/
   cmd/
     aicp-server/     Entry point: config, DI, graceful shutdown
-    aicp/            CLI tool (cobra): did, discover, onboard, pay
+    aicp/            CLI tool (cobra): did, discover, onboard, pay, mcp
   internal/
     config/          Environment/YAML configuration with validation
-    crypto/          Ed25519 keys, signing, JWS (go-jose/v4), Merkle trees
-    identity/        Layer 1: DID lifecycle, VCs, delegation, revocation
-    discovery/       Layer 2: ANS records, tiered resolver, full-text search
+    crypto/          Ed25519 keys, signing, JWS (go-jose/v4), Merkle trees, standalone SignJWS/VerifyJWS
+    identity/        Layer 1: DID lifecycle, VCs, delegation, revocation, multi-DID resolution, capabilities, OIDC bridge
+    discovery/       Layer 2: ANS records, tiered resolver, federated search, peer registry
     onboarding/      Layer 3: 4-phase state machine, sessions, challenges
     commerce/        Layer 4: Payment tokens, executor, spending limits
       adapter/       PaymentAdapter implementations (Stripe, PayPal, USDC)
@@ -57,6 +57,7 @@ server/
       handlers/      Request handlers for all endpoints
       middleware/     DID-auth, rate limiting, metrics, CORS, recovery
       websocket/     Connection hub, ticket-based auth, event delivery
+    mcp/             MCP server: JSON-RPC 2.0 over stdio, AICP tools for AI agents
     events/          Typed event emitter, Redis pub/sub bridge
   pkg/aicp/          Public types, error codes, version constants
   sqlc/              SQL queries and generated type-safe code
@@ -66,14 +67,16 @@ server/
 
 | Pattern | Where | Why |
 |---------|-------|-----|
-| **Strategy** | `PaymentAdapter` (Stripe/PayPal/USDC), `LedgerBackend` | Swap implementations without changing consumers |
+| **Strategy** | `PaymentAdapter` (Stripe/PayPal/USDC), `LedgerBackend`, `DIDMethodResolver` (aicp/key/web) | Swap implementations without changing consumers |
 | **State Machine** | Onboarding 4-phase flow | Prevent invalid state transitions, enforce guards |
 | **Repository** | DID, Credential, Receipt, Block, Trust repos | Decouple storage from business logic |
 | **Observer** | Event emitter -> Redis pub/sub -> WebSocket | Loose coupling for cross-cutting concerns |
 | **Builder** | `ANSRecordBuilder`, `DIDDocumentBuilder` | Fluent API for complex objects |
-| **Adapter** | DID method resolvers, payment providers | Uniform interface across implementations |
+| **Adapter** | DID method resolvers, payment providers, MCP tool adapter | Uniform interface across implementations |
 | **Middleware Chain** | chi middleware stack | Composable request pipeline |
 | **Factory** | Payment adapter registry | Hide multi-step creation complexity |
+| **Bridge** | `OIDCBridge` (AICP DID ↔ OIDC tokens), MCP server (AICP ↔ MCP tools) | Protocol translation between systems |
+| **Registry** | `MultiMethodResolver`, `PeerRegistry` | Thread-safe dynamic service registration |
 
 ## Key Interfaces
 

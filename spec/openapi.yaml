@@ -7,6 +7,13 @@ info:
     to discover services, prove identity via W3C DIDs and Verifiable Credentials,
     negotiate capabilities, authorize payments, and receive real-time events.
 
+    Key protocol extensions:
+    - **Multi-DID method resolution**: Supports did:aicp, did:key, and did:web
+    - **Federated ANS**: Cross-deployment service discovery via peer federation
+    - **Capability-based access control**: Fine-grained hierarchical permissions
+    - **OIDC Bridge**: Maps AICP DIDs to OpenID Connect identity tokens
+    - **MCP Integration**: Exposes all AICP operations as Model Context Protocol tools
+
     This specification is the protocol source of truth. All request and response
     types correspond 1:1 to the Go types in `server/pkg/aicp/types.go`.
   contact:
@@ -30,6 +37,8 @@ tags:
     description: Payment token issuance, execution, and status
   - name: WebSocket
     description: Real-time event streaming over WebSocket
+  - name: Identity
+    description: DID management, multi-method resolution, capabilities, OIDC bridge
   - name: Operational
     description: Health, readiness, and metrics
 
@@ -1532,6 +1541,84 @@ components:
         version:
           type: string
           example: "1.0"
+
+    # -----------------------------------------------------------------------
+    # Protocol Extension Types
+    # -----------------------------------------------------------------------
+    CapabilityType:
+      type: string
+      description: |
+        Fine-grained capability type for access control. Supports hierarchical
+        matching (e.g., "payment:*" matches "payment:read") and wildcard "*".
+      enum:
+        - "*"
+        - "payment:read"
+        - "payment:execute"
+        - "payment:approve"
+        - "did:create"
+        - "did:update"
+        - "did:deactivate"
+        - "credential:issue"
+        - "credential:revoke"
+        - "discovery:read"
+        - "discovery:write"
+        - "onboard"
+        - "subscribe"
+
+    CapabilityGrant:
+      type: object
+      description: Fine-grained capability grant with resource scope and conditions.
+      required: [capability]
+      properties:
+        capability:
+          $ref: "#/components/schemas/CapabilityType"
+        resource:
+          type: string
+          description: Resource scope (specific DID or "*" for all)
+        conditions:
+          type: object
+          properties:
+            max_amount:
+              type: string
+              description: Maximum transaction amount
+            time_window:
+              type: string
+              description: Time window for the grant (e.g., "24h")
+            ip_allow_list:
+              type: array
+              items:
+                type: string
+            service_scope:
+              type: string
+
+    OIDCTokenResponse:
+      type: object
+      required: [id_token, token_type, expires_in]
+      properties:
+        id_token:
+          type: string
+          description: JWS-signed OIDC ID token (EdDSA)
+        token_type:
+          type: string
+          example: "Bearer"
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+
+    FederationPeer:
+      type: object
+      required: [name, endpoint]
+      properties:
+        name:
+          type: string
+          description: Human-readable peer name
+        endpoint:
+          type: string
+          format: uri
+          description: Base URL of the peer AICP deployment
+        did:
+          type: string
+          description: The peer's service DID
 
     ReadyResponse:
       type: object

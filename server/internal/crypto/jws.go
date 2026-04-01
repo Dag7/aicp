@@ -116,6 +116,46 @@ func (v *JWSVerifier) VerifyClaimsWithExpiry(token string, publicKey ed25519.Pub
 	return nil
 }
 
+// SignJWS signs a payload with Ed25519 and returns JWS compact serialization.
+// The typ parameter sets the JWS "typ" header (e.g., "JWT" for OIDC tokens).
+func SignJWS(privateKey ed25519.PrivateKey, payload []byte, typ string) (string, error) {
+	signingKey := jose.SigningKey{
+		Algorithm: jose.EdDSA,
+		Key:       privateKey,
+	}
+	opts := &jose.SignerOptions{}
+	if typ != "" {
+		opts.WithType(jose.ContentType(typ))
+	}
+	signer, err := jose.NewSigner(signingKey, opts)
+	if err != nil {
+		return "", fmt.Errorf("creating JWS signer: %w", err)
+	}
+	signed, err := signer.Sign(payload)
+	if err != nil {
+		return "", fmt.Errorf("signing JWS: %w", err)
+	}
+	compact, err := signed.CompactSerialize()
+	if err != nil {
+		return "", fmt.Errorf("serializing JWS: %w", err)
+	}
+	return compact, nil
+}
+
+// VerifyJWS verifies a JWS compact serialization against an Ed25519 public key
+// and returns the raw payload bytes.
+func VerifyJWS(publicKey ed25519.PublicKey, token string) ([]byte, error) {
+	parsed, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.EdDSA})
+	if err != nil {
+		return nil, fmt.Errorf("parsing JWS: %w", err)
+	}
+	payload, err := parsed.Verify(publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("verifying JWS signature: %w", err)
+	}
+	return payload, nil
+}
+
 // ExtractKeyID returns the key ID from the JWS header without verifying the signature.
 func ExtractKeyID(token string) (string, error) {
 	parsed, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.EdDSA})

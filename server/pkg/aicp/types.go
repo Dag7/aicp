@@ -616,6 +616,42 @@ type PaginatedResult[T any] struct {
 	HasMore    bool   `json:"has_more"`
 }
 
+// ─── Capability-Based Access Control ────────────────────────────────────────
+
+// CapabilityType defines the types of fine-grained capabilities an agent can hold.
+type CapabilityType string
+
+const (
+	CapabilityAll             CapabilityType = "*"                // Wildcard: all capabilities
+	CapabilityPaymentRead     CapabilityType = "payment:read"     // View payment status
+	CapabilityPaymentExecute  CapabilityType = "payment:execute"  // Execute payments
+	CapabilityPaymentApprove  CapabilityType = "payment:approve"  // Approve/deny payments
+	CapabilityDIDCreate       CapabilityType = "did:create"       // Create agent DIDs
+	CapabilityDIDUpdate       CapabilityType = "did:update"       // Update DID documents
+	CapabilityDIDDeactivate   CapabilityType = "did:deactivate"   // Deactivate DIDs
+	CapabilityCredentialIssue CapabilityType = "credential:issue" // Issue credentials
+	CapabilityCredentialRevoke CapabilityType = "credential:revoke" // Revoke credentials
+	CapabilityDiscoveryRead   CapabilityType = "discovery:read"   // Search ANS records
+	CapabilityDiscoveryWrite  CapabilityType = "discovery:write"  // Register/delete ANS records
+	CapabilityOnboard         CapabilityType = "onboard"          // Initiate onboarding
+	CapabilitySubscribe       CapabilityType = "subscribe"        // Subscribe to services
+)
+
+// CapabilityGrant represents a fine-grained capability with optional resource scope.
+type CapabilityGrant struct {
+	Capability CapabilityType `json:"capability"`
+	Resource   string         `json:"resource,omitempty"`  // Optional: specific DID or service scope
+	Conditions *CapConditions `json:"conditions,omitempty"` // Optional: conditional constraints
+}
+
+// CapConditions are conditional constraints on a capability grant.
+type CapConditions struct {
+	MaxAmount    *MoneyAmount `json:"maxAmount,omitempty"`    // Max per invocation
+	TimeWindow   string       `json:"timeWindow,omitempty"`   // e.g., "24h", "30d"
+	IPAllowList  []string     `json:"ipAllowList,omitempty"`  // Restrict to IPs
+	ServiceScope []string     `json:"serviceScope,omitempty"` // Restrict to service categories
+}
+
 // ─── Validator Types ────────────────────────────────────────────────────────
 
 // Validator represents a consensus validator node.

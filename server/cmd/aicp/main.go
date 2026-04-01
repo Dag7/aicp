@@ -45,6 +45,7 @@ the AICP protocol.`,
 		newPaymentCmd(),
 		newKeyCmd(),
 		newHealthCmd(),
+		newMCPCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

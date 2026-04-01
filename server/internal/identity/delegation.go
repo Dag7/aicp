@@ -27,12 +27,13 @@ func NewDelegationVerifier(backend ledger.LedgerBackend, didMgr *DIDManager, cre
 
 // DelegationChain is the result of verifying an agent's delegation.
 type DelegationChain struct {
-	AgentDID      string   `json:"agent_did"`
-	PrincipalDID  string   `json:"principal_did"`
-	Chain         []string `json:"chain"`
-	Valid         bool     `json:"valid"`
-	Capabilities  []string `json:"capabilities,omitempty"`
-	Errors        []string `json:"errors,omitempty"`
+	AgentDID      string                    `json:"agent_did"`
+	PrincipalDID  string                    `json:"principal_did"`
+	Chain         []string                  `json:"chain"`
+	Valid         bool                      `json:"valid"`
+	Capabilities  []string                  `json:"capabilities,omitempty"`
+	Credential    *aicp.VerifiableCredential `json:"credential,omitempty"`
+	Errors        []string                  `json:"errors,omitempty"`
 }
 
 // VerifyDelegation verifies that an agent DID has a valid delegation chain
@@ -105,6 +106,9 @@ func (dv *DelegationVerifier) VerifyDelegation(ctx context.Context, agentDID str
 			result.Errors = append(result.Errors, verResult.Errors...)
 			return result, nil
 		}
+
+		// Store the credential for fine-grained capability inspection.
+		result.Credential = cred
 
 		// Extract capabilities from the delegation credential.
 		var subject aicp.AgentDelegationSubject
