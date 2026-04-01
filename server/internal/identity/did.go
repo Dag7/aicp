@@ -171,10 +171,10 @@ func (dm *DIDManager) createProof(kp *crypto.KeyPair, doc aicp.DIDDocument) (aic
 
 	did := crypto.PrincipalDID(kp.PublicKey)
 	return aicp.Proof{
-		Type:               "Ed25519Signature2020",
+		Type:               aicp.ProofTypeEd25519Sig2020,
 		Created:            time.Now().UTC(),
-		VerificationMethod: did + "#key-1",
-		ProofPurpose:       "assertionMethod",
+		VerificationMethod: did + aicp.PrimaryKeyFragment,
+		ProofPurpose:       aicp.ProofPurposeAssertion,
 		ProofValue:         sigB58,
 	}, nil
 }
@@ -188,10 +188,10 @@ func (dm *DIDManager) createDeactivationProof(kp *crypto.KeyPair, did string) (a
 
 	signerDID := crypto.PrincipalDID(kp.PublicKey)
 	return aicp.Proof{
-		Type:               "Ed25519Signature2020",
+		Type:               aicp.ProofTypeEd25519Sig2020,
 		Created:            time.Now().UTC(),
-		VerificationMethod: signerDID + "#key-1",
-		ProofPurpose:       "assertionMethod",
+		VerificationMethod: signerDID + aicp.PrimaryKeyFragment,
+		ProofPurpose:       aicp.ProofPurposeAssertion,
 		ProofValue:         sigB58,
 	}, nil
 }

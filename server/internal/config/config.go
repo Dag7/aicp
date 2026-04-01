@@ -33,6 +33,9 @@ type ServerConfig struct {
 	MetricsPort     int           `env:"METRICS_PORT"      envDefault:"9090"`
 	LogLevel        string        `env:"LOG_LEVEL"         envDefault:"info"`
 	LogFormat       string        `env:"LOG_FORMAT"        envDefault:"json"`
+	AllowedOrigins  []string      `env:"ALLOWED_ORIGINS"   envDefault:"*"              envSeparator:","`
+	RateLimitMax    int           `env:"RATE_LIMIT_MAX"    envDefault:"100"`
+	RateLimitWindow time.Duration `env:"RATE_LIMIT_WINDOW" envDefault:"1m"`
 }
 
 // Addr returns the server listen address.

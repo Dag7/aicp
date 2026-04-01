@@ -95,7 +95,7 @@ func FilterByCategory(results []RankedResult, categories []string) []RankedResul
 // FormatSearchResponse converts ranked results to a paginated response.
 func FormatSearchResponse(results []RankedResult, limit int, offset int) *aicp.PaginatedResult[aicp.ANSRecord] {
 	if limit <= 0 {
-		limit = 20
+		limit = aicp.DefaultPageLimit
 	}
 
 	total := len(results)

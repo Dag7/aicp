@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -53,7 +54,7 @@ func (p *PostgresBackend) AnchorDID(ctx context.Context, did string, doc aicp.DI
 	if err != nil {
 		return nil, fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx,
 		`INSERT INTO did_documents (did, controller, document, document_hash, version_id, created_at, updated_at)
@@ -112,10 +113,10 @@ func (p *PostgresBackend) ResolveDID(ctx context.Context, did string) (*aicp.DID
 		 FROM did_documents WHERE did = $1`,
 		did,
 	).Scan(&docJSON, &docHash, &deactivated, &versionID, &createdAt, &updatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, aicp.ErrNotFound
-		}
 		return nil, fmt.Errorf("querying DID document: %w", err)
 	}
 
@@ -147,7 +148,7 @@ func (p *PostgresBackend) UpdateDIDDocument(ctx context.Context, did string, doc
 	if err != nil {
 		return nil, fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var newVersion int
 	err = tx.QueryRow(ctx,
@@ -155,10 +156,10 @@ func (p *PostgresBackend) UpdateDIDDocument(ctx context.Context, did string, doc
 		 WHERE did = $1 AND NOT deactivated RETURNING version_id`,
 		did, docJSON, docHash,
 	).Scan(&newVersion)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, aicp.ErrNotFound
-		}
 		return nil, fmt.Errorf("updating DID document: %w", err)
 	}
 
@@ -198,7 +199,7 @@ func (p *PostgresBackend) DeactivateDID(ctx context.Context, did string, proof a
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	tag, err := tx.Exec(ctx,
 		`UPDATE did_documents SET deactivated = TRUE, updated_at = NOW() WHERE did = $1 AND NOT deactivated`,
@@ -278,10 +279,10 @@ func (p *PostgresBackend) GetCredential(ctx context.Context, credentialID string
 		`SELECT credential FROM credentials WHERE credential_id = $1`,
 		credentialID,
 	).Scan(&credJSON)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, aicp.ErrNotFound
-		}
 		return nil, fmt.Errorf("querying credential: %w", err)
 	}
 
@@ -297,7 +298,7 @@ func (p *PostgresBackend) RevokeCredential(ctx context.Context, credentialID str
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	tag, err := tx.Exec(ctx,
 		`UPDATE credentials SET revoked = TRUE, revoked_at = NOW() WHERE credential_id = $1 AND NOT revoked`,
@@ -329,10 +330,10 @@ func (p *PostgresBackend) IsCredentialRevoked(ctx context.Context, credentialID 
 		`SELECT revoked FROM credentials WHERE credential_id = $1`,
 		credentialID,
 	).Scan(&revoked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return false, aicp.ErrNotFound
-		}
 		return false, fmt.Errorf("checking credential revocation: %w", err)
 	}
 	return revoked, nil
@@ -353,10 +354,10 @@ func (p *PostgresBackend) GetRevocationList(ctx context.Context, listID string) 
 		 FROM revocation_lists WHERE list_id = $1`,
 		listID,
 	).Scan(&issuerDID, &encodedList, &totalCapacity, &nextFreeIndex, &versionID, &updatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, aicp.ErrNotFound
-		}
 		return nil, fmt.Errorf("querying revocation list: %w", err)
 	}
 
@@ -402,7 +403,7 @@ func (p *PostgresBackend) StoreReceipt(ctx context.Context, receipt aicp.SignedP
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx,
 		`INSERT INTO payment_receipts (receipt_id, token_jti, payer_did, payee_did, amount_value, amount_currency, receipt_hash, status, settled_at, created_at)
@@ -444,10 +445,10 @@ func (p *PostgresBackend) GetReceipt(ctx context.Context, receiptID string) (*ai
 		 FROM payment_receipts WHERE receipt_id = $1`,
 		receiptID,
 	).Scan(&tokenJTI, &payerDID, &payeeDID, &amountVal, &amountCur, &receiptHash, &status, &settledAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, aicp.ErrNotFound
-		}
 		return nil, fmt.Errorf("querying receipt: %w", err)
 	}
 
@@ -464,17 +465,7 @@ func (p *PostgresBackend) GetReceipt(ctx context.Context, receiptID string) (*ai
 }
 
 func (p *PostgresBackend) ListReceiptsByAgent(ctx context.Context, agentDID string, opts aicp.PaginationOpts) (*aicp.PaginatedResult[aicp.SignedPaymentReceipt], error) {
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	offset := 0
-	if opts.Cursor != "" {
-		parsed, err := strconv.Atoi(opts.Cursor)
-		if err == nil {
-			offset = parsed
-		}
-	}
+	limit, offset := opts.Parse()
 
 	rows, err := p.pool.Query(ctx,
 		`SELECT receipt_id, token_jti, payer_did, payee_did, amount_value, amount_currency, receipt_hash, status, settled_at
@@ -588,7 +579,7 @@ func (p *PostgresBackend) StoreBlock(ctx context.Context, block aicp.Block) erro
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx,
 		`INSERT INTO ledger_blocks (number, hash, previous_hash, merkle_root, entry_count, validator_did, validator_sig, signatures, created_at)
@@ -641,10 +632,10 @@ func (p *PostgresBackend) scanBlock(ctx context.Context, query string, args ...a
 		&block.Number, &block.Hash, &block.PreviousHash, &block.MerkleRoot,
 		&block.EntryCount, &block.ValidatorDID, &block.ValidatorSig, &sigsRaw, &block.CreatedAt,
 	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, aicp.ErrNotFound
-		}
 		return nil, fmt.Errorf("scanning block: %w", err)
 	}
 
@@ -665,10 +656,10 @@ func (p *PostgresBackend) GetTrustScore(ctx context.Context, did string) (*aicp.
 	).Scan(&ts.DID, &ts.Score, &ts.Components.Identity, &ts.Components.AccountAge,
 		&ts.Components.Transactions, &ts.Components.Endorsements, &ts.Components.Credentials,
 		&ts.Components.DisputePenalty, &ts.ComputedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, aicp.ErrNotFound
-		}
 		return nil, fmt.Errorf("querying trust score: %w", err)
 	}
 	return &ts, nil
@@ -722,10 +713,10 @@ func (p *PostgresBackend) GetANSRecord(ctx context.Context, serviceDID string) (
 		`SELECT record FROM ans_records WHERE service_did = $1`,
 		serviceDID,
 	).Scan(&recordJSON)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, aicp.ErrNotFound
-		}
 		return nil, fmt.Errorf("querying ANS record: %w", err)
 	}
 
@@ -737,17 +728,7 @@ func (p *PostgresBackend) GetANSRecord(ctx context.Context, serviceDID string) (
 }
 
 func (p *PostgresBackend) SearchANSRecords(ctx context.Context, query string, opts aicp.PaginationOpts) (*aicp.PaginatedResult[aicp.ANSRecord], error) {
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	offset := 0
-	if opts.Cursor != "" {
-		parsed, err := strconv.Atoi(opts.Cursor)
-		if err == nil {
-			offset = parsed
-		}
-	}
+	limit, offset := opts.Parse()
 
 	rows, err := p.pool.Query(ctx,
 		`SELECT record FROM ans_records
@@ -861,10 +842,10 @@ func (p *PostgresBackend) GetValidator(ctx context.Context, validatorDID string)
 		`SELECT did, public_key, grpc_address, active, joined_at FROM validators WHERE did = $1`,
 		validatorDID,
 	).Scan(&v.DID, &v.PublicKey, &v.GRPCAddress, &v.Active, &v.JoinedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, aicp.ErrNotFound
+	}
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, aicp.ErrNotFound
-		}
 		return nil, fmt.Errorf("querying validator: %w", err)
 	}
 	return &v, nil

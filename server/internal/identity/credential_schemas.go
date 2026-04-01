@@ -2,7 +2,6 @@ package identity
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/aicp-protocol/aicp/server/internal/crypto"
@@ -37,7 +36,7 @@ func (cm *CredentialManager) IssueDelegationCredential(
 		Constraints:           constraints,
 	}
 
-	credID := fmt.Sprintf("urn:aicp:credential:%s", crypto.SHA256Hex([]byte(principalDID+":"+agentDID+":delegation"))[:16])
+	credID := aicp.CredentialIDPrefix + crypto.SHA256Hex([]byte(principalDID+":"+agentDID+":delegation"))[:16]
 
 	return cm.IssueCredential(ctx, IssueParams{
 		CredentialID:   credID,
@@ -68,7 +67,7 @@ func (cm *CredentialManager) IssueSpendingAuthorization(
 		Limits:         limits,
 	}
 
-	credID := fmt.Sprintf("urn:aicp:credential:%s", crypto.SHA256Hex([]byte(principalDID+":"+agentDID+":spending"))[:16])
+	credID := aicp.CredentialIDPrefix + crypto.SHA256Hex([]byte(principalDID+":"+agentDID+":spending"))[:16]
 
 	return cm.IssueCredential(ctx, IssueParams{
 		CredentialID:   credID,
@@ -112,7 +111,7 @@ func (cm *CredentialManager) IssueServiceAttestation(
 		Attestation: attestation,
 	}
 
-	credID := fmt.Sprintf("urn:aicp:credential:%s", crypto.SHA256Hex([]byte(attesterDID+":"+serviceDID+":attestation"))[:16])
+	credID := aicp.CredentialIDPrefix + crypto.SHA256Hex([]byte(attesterDID+":"+serviceDID+":attestation"))[:16]
 
 	return cm.IssueCredential(ctx, IssueParams{
 		CredentialID:   credID,

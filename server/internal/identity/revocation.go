@@ -29,7 +29,7 @@ func NewRevocationManager(backend ledger.LedgerBackend) *RevocationManager {
 
 // CreateList creates a new revocation list for an issuer.
 func (rm *RevocationManager) CreateList(ctx context.Context, issuerDID string) (*aicp.RevocationList, error) {
-	listID := fmt.Sprintf("urn:aicp:revocation:%s", crypto.SHA256Hex([]byte(issuerDID+":revocation-list"))[:16])
+	listID := aicp.RevocationIDPrefix + crypto.SHA256Hex([]byte(issuerDID+":revocation-list"))[:16]
 
 	// Create an empty bitstring (all zeros).
 	bitstring := make([]byte, defaultListCapacity/8)
@@ -156,6 +156,6 @@ func decodeBitstring(encoded string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	return io.ReadAll(r)
 }

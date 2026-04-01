@@ -1,39 +1,79 @@
 package handlers
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
-	
-	"github.com/aicp-protocol/aicp/server/internal/identity"
 	"github.com/aicp-protocol/aicp/server/internal/onboarding"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
 
 // OnboardHandler handles the 4-phase onboarding endpoints.
 type OnboardHandler struct {
-	sessions  *onboarding.SessionManager
-	challenge *onboarding.ChallengeService
-	didMgr    *identity.DIDManager
-	trust     *onboarding.TrustComputer
+	sessions    *onboarding.SessionManager
+	challenge   *onboarding.ChallengeService
+	trust       *onboarding.TrustComputer
 	rateLimiter *onboarding.RateLimiter
+	serviceDID  string
 }
 
 // NewOnboardHandler creates a new onboarding handler.
 func NewOnboardHandler(
 	sessions *onboarding.SessionManager,
 	challenge *onboarding.ChallengeService,
-	didMgr *identity.DIDManager,
 	trust *onboarding.TrustComputer,
 	rateLimiter *onboarding.RateLimiter,
+	serviceDID string,
 ) *OnboardHandler {
 	return &OnboardHandler{
 		sessions:    sessions,
 		challenge:   challenge,
-		didMgr:      didMgr,
 		trust:       trust,
 		rateLimiter: rateLimiter,
+		serviceDID:  serviceDID,
+	}
+}
+
+// checkRateLimits verifies both DID-based and IP-based rate limits.
+func (h *OnboardHandler) checkRateLimits(ctx context.Context, did, remoteAddr string) error {
+	if h.rateLimiter == nil {
+		return nil
+	}
+	if err := h.rateLimiter.CheckDID(ctx, did); err != nil {
+		return err
+	}
+	return h.rateLimiter.CheckIP(ctx, remoteAddr)
+}
+
+// getSession retrieves an onboarding session by URL param, writing an error response on failure.
+func (h *OnboardHandler) getSession(w http.ResponseWriter, r *http.Request) (*aicp.OnboardingState, bool) {
+	sessionID := chi.URLParam(r, "id")
+	state, err := h.sessions.Get(r.Context(), sessionID)
+	if err != nil {
+		JSONError(w, http.StatusNotFound, "NOT_FOUND", "session not found")
+		return nil, false
+	}
+	return state, true
+}
+
+// transitionTo advances the onboarding state through the given phases in order.
+func (h *OnboardHandler) transitionTo(ctx context.Context, state *aicp.OnboardingState, phases ...aicp.OnboardingPhase) error {
+	flow := onboarding.NewFlow(state, 0)
+	for _, phase := range phases {
+		if err := flow.Transition(ctx, phase); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// persistSession saves the updated onboarding state, logging any error.
+func (h *OnboardHandler) persistSession(ctx context.Context, sessionID string, state *aicp.OnboardingState) {
+	if err := h.sessions.Update(ctx, state); err != nil {
+		slog.Error("failed to update onboarding session", "session_id", sessionID, "phase", state.Phase, "error", err)
 	}
 }
 
@@ -51,19 +91,13 @@ func (h *OnboardHandler) Initiate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Rate limit check.
-	if h.rateLimiter != nil {
-		if err := h.rateLimiter.CheckDID(r.Context(), req.AgentDID); err != nil {
-			JSONError(w, http.StatusTooManyRequests, "RATE_LIMITED", "too many onboarding attempts")
-			return
-		}
-		if err := h.rateLimiter.CheckIP(r.Context(), r.RemoteAddr); err != nil {
-			JSONError(w, http.StatusTooManyRequests, "RATE_LIMITED", "too many onboarding attempts")
-			return
-		}
+	if err := h.checkRateLimits(r.Context(), req.AgentDID, r.RemoteAddr); err != nil {
+		JSONError(w, http.StatusTooManyRequests, "RATE_LIMITED", "too many onboarding attempts")
+		return
 	}
 
 	// Create session.
-	state, err := h.sessions.Create(r.Context(), req.AgentDID, "")
+	state, err := h.sessions.Create(r.Context(), req.AgentDID, h.serviceDID)
 	if err != nil {
 		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create session")
 		return
@@ -77,7 +111,9 @@ func (h *OnboardHandler) Initiate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.rateLimiter != nil {
-		h.rateLimiter.RecordAttempt(r.Context(), req.AgentDID, r.RemoteAddr)
+		if err := h.rateLimiter.RecordAttempt(r.Context(), req.AgentDID, r.RemoteAddr); err != nil {
+			slog.Error("failed to record rate limit attempt", "agent_did", req.AgentDID, "error", err)
+		}
 	}
 
 	JSON(w, http.StatusCreated, aicp.OnboardInitResponse{
@@ -89,7 +125,10 @@ func (h *OnboardHandler) Initiate(w http.ResponseWriter, r *http.Request) {
 
 // Negotiate handles POST /aicp/v1/onboard/{id}/negotiate — Phase 2.
 func (h *OnboardHandler) Negotiate(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "id")
+	state, ok := h.getSession(w, r)
+	if !ok {
+		return
+	}
 
 	var req aicp.NegotiateRequest
 	if err := DecodeJSON(r, &req); err != nil {
@@ -97,27 +136,15 @@ func (h *OnboardHandler) Negotiate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state, err := h.sessions.Get(r.Context(), sessionID)
-	if err != nil {
-		JSONError(w, http.StatusNotFound, "NOT_FOUND", "session not found")
-		return
-	}
-
 	// Verify DID-Auth challenge if provided.
 	if req.ChallengeResponse != nil {
-		if err := h.challenge.Verify(r.Context(), sessionID, req.ChallengeResponse.Challenge); err != nil {
+		if err := h.challenge.Verify(r.Context(), state.SessionID, req.ChallengeResponse.Challenge); err != nil {
 			JSONError(w, http.StatusUnauthorized, "AUTH_FAILED", "challenge verification failed")
 			return
 		}
 	}
 
-	// Transition state.
-	flow := onboarding.NewFlow(state, 0)
-	if err := flow.Transition(r.Context(), aicp.PhaseIdentityPresented); err != nil {
-		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", err.Error())
-		return
-	}
-	if err := flow.Transition(r.Context(), aicp.PhaseCapabilitiesNegotiated); err != nil {
+	if err := h.transitionTo(r.Context(), state, aicp.PhaseIdentityPresented, aicp.PhaseCapabilitiesNegotiated); err != nil {
 		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", err.Error())
 		return
 	}
@@ -128,7 +155,7 @@ func (h *OnboardHandler) Negotiate(w http.ResponseWriter, r *http.Request) {
 		approved = append(approved, cap.Name)
 	}
 
-	h.sessions.Update(r.Context(), state)
+	h.persistSession(r.Context(), state.SessionID, state)
 
 	JSON(w, http.StatusOK, aicp.NegotiateResponse{
 		State:                *state,
@@ -138,7 +165,10 @@ func (h *OnboardHandler) Negotiate(w http.ResponseWriter, r *http.Request) {
 
 // Authorize handles POST /aicp/v1/onboard/{id}/authorize — Phase 3.
 func (h *OnboardHandler) Authorize(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "id")
+	state, ok := h.getSession(w, r)
+	if !ok {
+		return
+	}
 
 	var req aicp.AuthorizeRequest
 	if err := DecodeJSON(r, &req); err != nil {
@@ -146,19 +176,12 @@ func (h *OnboardHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state, err := h.sessions.Get(r.Context(), sessionID)
-	if err != nil {
-		JSONError(w, http.StatusNotFound, "NOT_FOUND", "session not found")
-		return
-	}
-
-	flow := onboarding.NewFlow(state, 0)
-	if err := flow.Transition(r.Context(), aicp.PhasePaymentAuthorized); err != nil {
+	if err := h.transitionTo(r.Context(), state, aicp.PhasePaymentAuthorized); err != nil {
 		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", err.Error())
 		return
 	}
 
-	h.sessions.Update(r.Context(), state)
+	h.persistSession(r.Context(), state.SessionID, state)
 
 	JSON(w, http.StatusOK, aicp.AuthorizeResponse{
 		State:      *state,
@@ -168,21 +191,17 @@ func (h *OnboardHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 
 // Provision handles POST /aicp/v1/onboard/{id}/provision — Phase 4.
 func (h *OnboardHandler) Provision(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "id")
-
-	state, err := h.sessions.Get(r.Context(), sessionID)
-	if err != nil {
-		JSONError(w, http.StatusNotFound, "NOT_FOUND", "session not found")
+	state, ok := h.getSession(w, r)
+	if !ok {
 		return
 	}
 
-	flow := onboarding.NewFlow(state, 0)
-	if err := flow.Transition(r.Context(), aicp.PhaseProvisioned); err != nil {
+	if err := h.transitionTo(r.Context(), state, aicp.PhaseProvisioned); err != nil {
 		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", err.Error())
 		return
 	}
 
-	h.sessions.Update(r.Context(), state)
+	h.persistSession(r.Context(), state.SessionID, state)
 
 	JSON(w, http.StatusOK, aicp.ProvisionResponse{
 		State:     *state,

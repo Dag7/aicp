@@ -31,7 +31,7 @@ func RateLimit(rdb *redis.Client, maxRequests int, window time.Duration) func(ht
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(window.Seconds())))
 				w.WriteHeader(http.StatusTooManyRequests)
-				fmt.Fprintf(w, `{"success":false,"error":{"code":"RATE_LIMITED","message":"rate limit exceeded"}}`)
+				_, _ = fmt.Fprintf(w, `{"success":false,"error":{"code":"RATE_LIMITED","message":"rate limit exceeded"}}`)
 				return
 			}
 

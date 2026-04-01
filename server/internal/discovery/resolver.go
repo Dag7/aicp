@@ -60,7 +60,7 @@ func (r *Resolver) ResolveDomain(ctx context.Context, domain string) (*aicp.ANSR
 	if err != nil {
 		return nil, fmt.Errorf("fetching .well-known/aicp.json from %s: %w", domain, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, domain)

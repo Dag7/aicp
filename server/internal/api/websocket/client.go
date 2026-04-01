@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	ws "nhooyr.io/websocket"
+	ws "github.com/coder/websocket"
 
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
@@ -18,6 +18,9 @@ const (
 	pingPeriod = 30 * time.Second
 	maxMsgSize = 4096
 	sendBuffer = 256
+
+	actionSubscribe   = "subscribe"
+	actionUnsubscribe = "unsubscribe"
 )
 
 // Client represents a single WebSocket connection.
@@ -89,7 +92,7 @@ func (c *Client) Run(ctx context.Context) {
 func (c *Client) readPump(ctx context.Context) {
 	defer func() {
 		c.hub.Unregister(c)
-		c.conn.Close(ws.StatusNormalClosure, "")
+		_ = c.conn.Close(ws.StatusNormalClosure, "")
 	}()
 
 	c.conn.SetReadLimit(maxMsgSize)
@@ -157,9 +160,9 @@ func (c *Client) handleMessage(msg []byte) {
 	}
 
 	switch cm.Action {
-	case "subscribe":
+	case actionSubscribe:
 		c.Subscribe(cm.EventType)
-	case "unsubscribe":
+	case actionUnsubscribe:
 		c.Unsubscribe(cm.EventType)
 	}
 }

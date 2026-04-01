@@ -35,7 +35,7 @@ func newDiscoverWellKnownCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("fetching .well-known: %w", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				return fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
@@ -67,7 +67,7 @@ func newDiscoverServerCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("fetching server info: %w", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			data, err := io.ReadAll(resp.Body)
 			if err != nil {

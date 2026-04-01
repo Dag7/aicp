@@ -9,6 +9,15 @@ import (
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
 
+// parseBigFloat parses a string into a *big.Float, returning zero on failure.
+func parseBigFloat(s string) *big.Float {
+	val, ok := new(big.Float).SetString(s)
+	if !ok {
+		return new(big.Float)
+	}
+	return val
+}
+
 // SpendingTracker enforces per-transaction, daily, and monthly spending limits.
 type SpendingTracker struct {
 	backend ledger.LedgerBackend
@@ -28,10 +37,7 @@ func (st *SpendingTracker) CheckLimits(ctx context.Context, did string, amount a
 		return false, fmt.Errorf("getting daily spending: %w", err)
 	}
 
-	daily, ok := new(big.Float).SetString(dailyStr)
-	if !ok {
-		daily = new(big.Float)
-	}
+	daily := parseBigFloat(dailyStr)
 
 	txAmount, ok := new(big.Float).SetString(amount.Value)
 	if !ok {
@@ -40,8 +46,8 @@ func (st *SpendingTracker) CheckLimits(ctx context.Context, did string, amount a
 
 	newDaily := new(big.Float).Add(daily, txAmount)
 
-	// Default daily limit: 10,000 (can be overridden per-agent via spending authorization).
-	defaultDailyLimit := new(big.Float).SetFloat64(10000)
+	// Default daily limit (can be overridden per-agent via spending authorization).
+	defaultDailyLimit := parseBigFloat(aicp.DefaultDailySpendingLimit)
 	if newDaily.Cmp(defaultDailyLimit) > 0 {
 		return false, nil
 	}
@@ -52,15 +58,11 @@ func (st *SpendingTracker) CheckLimits(ctx context.Context, did string, amount a
 		return false, fmt.Errorf("getting monthly spending: %w", err)
 	}
 
-	monthly, ok := new(big.Float).SetString(monthlyStr)
-	if !ok {
-		monthly = new(big.Float)
-	}
-
+	monthly := parseBigFloat(monthlyStr)
 	newMonthly := new(big.Float).Add(monthly, txAmount)
 
-	// Default monthly limit: 100,000.
-	defaultMonthlyLimit := new(big.Float).SetFloat64(100000)
+	// Default monthly limit.
+	defaultMonthlyLimit := parseBigFloat(aicp.DefaultMonthlySpendingLimit)
 	if newMonthly.Cmp(defaultMonthlyLimit) > 0 {
 		return false, nil
 	}
@@ -90,10 +92,7 @@ func (st *SpendingTracker) CheckCustomLimits(ctx context.Context, did string, am
 	if err != nil {
 		return false, fmt.Errorf("getting daily spending: %w", err)
 	}
-	daily, _ := new(big.Float).SetString(dailyStr)
-	if daily == nil {
-		daily = new(big.Float)
-	}
+	daily := parseBigFloat(dailyStr)
 	newDaily := new(big.Float).Add(daily, txAmount)
 
 	dailyLimit, ok := new(big.Float).SetString(limits.Daily.Value)
@@ -109,10 +108,7 @@ func (st *SpendingTracker) CheckCustomLimits(ctx context.Context, did string, am
 	if err != nil {
 		return false, fmt.Errorf("getting monthly spending: %w", err)
 	}
-	monthly, _ := new(big.Float).SetString(monthlyStr)
-	if monthly == nil {
-		monthly = new(big.Float)
-	}
+	monthly := parseBigFloat(monthlyStr)
 	newMonthly := new(big.Float).Add(monthly, txAmount)
 
 	monthlyLimit, ok := new(big.Float).SetString(limits.Monthly.Value)

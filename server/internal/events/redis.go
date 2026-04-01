@@ -44,7 +44,7 @@ func (rb *RedisBridge) Publish(ctx context.Context, event aicp.Event) error {
 // This method blocks until the context is cancelled.
 func (rb *RedisBridge) Subscribe(ctx context.Context) error {
 	pubsub := rb.redis.Subscribe(ctx, redisChannel)
-	defer pubsub.Close()
+	defer func() { _ = pubsub.Close() }()
 
 	ch := pubsub.Channel()
 	for {

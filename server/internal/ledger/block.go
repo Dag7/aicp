@@ -75,7 +75,7 @@ func (bp *BlockProducer) produceBlock(ctx context.Context) error {
 	}
 
 	var nextNumber uint64 = 1
-	var previousHash string = "0000000000000000000000000000000000000000000000000000000000000000"
+	previousHash := "0000000000000000000000000000000000000000000000000000000000000000"
 	if latestBlock != nil {
 		nextNumber = latestBlock.Number + 1
 		previousHash = latestBlock.Hash

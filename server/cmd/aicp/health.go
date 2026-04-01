@@ -47,7 +47,7 @@ func checkEndpoint(url string) error {
 		fmt.Printf("UNHEALTHY: %v\n", err)
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -56,7 +56,9 @@ func checkEndpoint(url string) error {
 
 	if output == "json" {
 		var result any
-		json.Unmarshal(data, &result)
+		if err := json.Unmarshal(data, &result); err != nil {
+			return fmt.Errorf("parsing response: %w", err)
+		}
 		return printJSON(result)
 	}
 

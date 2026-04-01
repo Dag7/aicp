@@ -2,6 +2,7 @@ package aicp
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 )
 
@@ -563,6 +564,20 @@ type Event struct {
 type PaginationOpts struct {
 	Limit  int    `json:"limit"`
 	Cursor string `json:"cursor,omitempty"`
+}
+
+// Parse returns the limit and offset from pagination options with sensible defaults.
+func (opts PaginationOpts) Parse() (limit, offset int) {
+	limit = opts.Limit
+	if limit <= 0 {
+		limit = DefaultPageLimit
+	}
+	if opts.Cursor != "" {
+		if parsed, err := strconv.Atoi(opts.Cursor); err == nil {
+			offset = parsed
+		}
+	}
+	return
 }
 
 // PaginatedResult wraps a page of results with cursor info.

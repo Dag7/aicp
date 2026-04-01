@@ -9,28 +9,20 @@ import (
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
 
-const (
-	// DID Document JSON-LD contexts.
-	contextDIDCore = "https://www.w3.org/ns/did/v1"
-	contextAICP    = "https://aicp-protocol.org/ns/v1"
-
-	// Verification method type for Ed25519.
-	vmTypeEd25519 = "Ed25519VerificationKey2020"
-)
 
 // BuildPrincipalDocument creates a DID Document for a principal identity.
 func BuildPrincipalDocument(did string, publicKey ed25519.PublicKey) aicp.DIDDocument {
 	now := time.Now().UTC()
-	keyID := did + "#key-1"
+	keyID := did + aicp.PrimaryKeyFragment
 
 	return aicp.DIDDocument{
-		Context:    []string{contextDIDCore, contextAICP},
+		Context:    []string{aicp.ContextDIDCore, aicp.ContextAICP},
 		ID:         did,
 		Controller: did,
 		VerificationMethod: []aicp.VerificationMethod{
 			{
 				ID:                 keyID,
-				Type:               vmTypeEd25519,
+				Type:               aicp.VMTypeEd25519,
 				Controller:         did,
 				PublicKeyMultibase: crypto.PublicKeyMultibase(publicKey),
 			},
@@ -47,16 +39,16 @@ func BuildPrincipalDocument(did string, publicKey ed25519.PublicKey) aicp.DIDDoc
 // BuildAgentDocument creates a DID Document for an agent identity.
 func BuildAgentDocument(agentDID, principalDID string, agentPublicKey ed25519.PublicKey) aicp.DIDDocument {
 	now := time.Now().UTC()
-	keyID := agentDID + "#key-1"
+	keyID := agentDID + aicp.PrimaryKeyFragment
 
 	return aicp.DIDDocument{
-		Context:    []string{contextDIDCore, contextAICP},
+		Context:    []string{aicp.ContextDIDCore, aicp.ContextAICP},
 		ID:         agentDID,
 		Controller: principalDID,
 		VerificationMethod: []aicp.VerificationMethod{
 			{
 				ID:                 keyID,
-				Type:               vmTypeEd25519,
+				Type:               aicp.VMTypeEd25519,
 				Controller:         agentDID,
 				PublicKeyMultibase: crypto.PublicKeyMultibase(agentPublicKey),
 			},
@@ -83,7 +75,7 @@ func AddServiceEndpoint(doc *aicp.DIDDocument, id, svcType, endpoint string) {
 func AddVerificationMethod(doc *aicp.DIDDocument, keyID string, publicKey ed25519.PublicKey, controller string) {
 	doc.VerificationMethod = append(doc.VerificationMethod, aicp.VerificationMethod{
 		ID:                 keyID,
-		Type:               vmTypeEd25519,
+		Type:               aicp.VMTypeEd25519,
 		Controller:         controller,
 		PublicKeyMultibase: crypto.PublicKeyMultibase(publicKey),
 	})

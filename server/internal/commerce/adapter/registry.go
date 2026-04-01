@@ -17,6 +17,7 @@ func generateID() string {
 // DefaultRegistry creates a registry pre-loaded with all built-in adapters.
 func DefaultRegistry() *Registry {
 	reg := NewRegistry()
+	reg.Register(NewSandboxAdapter())
 	reg.Register(NewStripeAdapter())
 	reg.Register(NewPayPalAdapter())
 	reg.Register(NewUSDCAdapter())

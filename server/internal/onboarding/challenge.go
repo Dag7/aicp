@@ -45,7 +45,7 @@ func (cs *ChallengeService) Issue(ctx context.Context, sessionID string) (*aicp.
 
 	now := time.Now().UTC()
 	challenge := &aicp.DIDAuthChallenge{
-		Type:      "DID-Auth",
+		Type:      aicp.ChallengeTypeDIDAuth,
 		Challenge: hex.EncodeToString(challengeBytes),
 		Domain:    cs.domain,
 		Nonce:     hex.EncodeToString(nonceBytes),

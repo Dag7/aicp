@@ -39,7 +39,7 @@ func newDIDResolveCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("request failed: %w", err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			data, err := io.ReadAll(resp.Body)
 			if err != nil {

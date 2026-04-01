@@ -21,7 +21,7 @@ type TokenIssuer struct {
 // NewTokenIssuer creates a new payment token issuer.
 func NewTokenIssuer(kp *crypto.KeyPair, ttl time.Duration) (*TokenIssuer, error) {
 	did := crypto.PrincipalDID(kp.PublicKey)
-	keyID := did + "#key-1"
+	keyID := did + aicp.PrimaryKeyFragment
 
 	signer, err := crypto.NewJWSSigner(kp.PrivateKey, keyID)
 	if err != nil {

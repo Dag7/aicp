@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	contextVC    = "https://www.w3.org/2018/credentials/v1"
 	contextVCAICP = "https://aicp-protocol.org/credentials/v1"
 )
 
@@ -39,7 +38,7 @@ func (cm *CredentialManager) IssueCredential(ctx context.Context, params IssuePa
 
 	now := time.Now().UTC()
 	cred := aicp.VerifiableCredential{
-		Context:           []string{contextVC, contextVCAICP},
+		Context:           []string{aicp.ContextCredentials, contextVCAICP},
 		ID:                params.CredentialID,
 		Type:              params.Types,
 		Issuer:            params.IssuerDID,
@@ -153,10 +152,10 @@ func (cm *CredentialManager) RevokeCredential(ctx context.Context, credentialID 
 	}
 
 	proof := aicp.Proof{
-		Type:               "Ed25519Signature2020",
+		Type:               aicp.ProofTypeEd25519Sig2020,
 		Created:            time.Now().UTC(),
-		VerificationMethod: revokerDID + "#key-1",
-		ProofPurpose:       "assertionMethod",
+		VerificationMethod: revokerDID + aicp.PrimaryKeyFragment,
+		ProofPurpose:       aicp.ProofPurposeAssertion,
 	}
 
 	sigData := []byte("revoke:" + credentialID)
@@ -187,10 +186,10 @@ func (cm *CredentialManager) signCredential(issuerKey *crypto.KeyPair, cred aicp
 
 	issuerDID := crypto.PrincipalDID(issuerKey.PublicKey)
 	return aicp.Proof{
-		Type:               "Ed25519Signature2020",
+		Type:               aicp.ProofTypeEd25519Sig2020,
 		Created:            time.Now().UTC(),
-		VerificationMethod: issuerDID + "#key-1",
-		ProofPurpose:       "assertionMethod",
+		VerificationMethod: issuerDID + aicp.PrimaryKeyFragment,
+		ProofPurpose:       aicp.ProofPurposeAssertion,
 		ProofValue:         sigB58,
 	}, nil
 }

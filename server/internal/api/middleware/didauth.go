@@ -58,7 +58,7 @@ func RequireAuth() func(http.Handler) http.Handler {
 			if !ok {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte(`{"success":false,"error":{"code":"UNAUTHORIZED","message":"authentication required"}}`))
+				_, _ = w.Write([]byte(`{"success":false,"error":{"code":"UNAUTHORIZED","message":"authentication required"}}`))
 				return
 			}
 			next.ServeHTTP(w, r)

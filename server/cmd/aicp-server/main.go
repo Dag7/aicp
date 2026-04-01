@@ -12,9 +12,22 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+
+	"github.com/aicp-protocol/aicp/server/internal/api"
+	websocketpkg "github.com/aicp-protocol/aicp/server/internal/api/websocket"
+	"github.com/aicp-protocol/aicp/server/internal/commerce"
+	"github.com/aicp-protocol/aicp/server/internal/commerce/adapter"
 	"github.com/aicp-protocol/aicp/server/internal/config"
+	"github.com/aicp-protocol/aicp/server/internal/crypto"
+	"github.com/aicp-protocol/aicp/server/internal/discovery"
+	"github.com/aicp-protocol/aicp/server/internal/events"
+	"github.com/aicp-protocol/aicp/server/internal/identity"
+	"github.com/aicp-protocol/aicp/server/internal/ledger"
+	"github.com/aicp-protocol/aicp/server/internal/onboarding"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
 
@@ -48,51 +61,153 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// TODO: Initialize PostgreSQL connection pool.
-	// TODO: Initialize Redis client.
-	// TODO: Initialize ledger backend.
-	// TODO: Initialize identity layer.
-	// TODO: Initialize discovery layer.
-	// TODO: Initialize commerce layer (payment adapters).
-	// TODO: Initialize onboarding layer.
-	// TODO: Initialize event system.
-	// TODO: Build chi router with all handlers and middleware.
+	// ── PostgreSQL ──────────────────────────────────────────────────────
+	poolCfg, err := pgxpool.ParseConfig(cfg.Database.URL)
+	if err != nil {
+		return fmt.Errorf("parsing database URL: %w", err)
+	}
+	poolCfg.MaxConns = int32(cfg.Database.MaxOpenConns)
+	poolCfg.MinConns = int32(cfg.Database.MaxIdleConns)
+	poolCfg.MaxConnLifetime = cfg.Database.ConnMaxLifetime
+	poolCfg.MaxConnIdleTime = cfg.Database.ConnMaxIdleTime
 
-	// Placeholder health handler until the full router is wired.
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"status":"ok","version":"%s","protocol":"%s"}`, aicp.Version, aicp.ProtocolVersion)
-	})
-	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Check PG and Redis connectivity.
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"status":"ready"}`)
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
+	if err != nil {
+		return fmt.Errorf("creating PostgreSQL pool: %w", err)
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		return fmt.Errorf("pinging PostgreSQL: %w", err)
+	}
+	slog.Info("PostgreSQL connected", "url", maskDSN(cfg.Database.URL))
+
+	// ── Redis ───────────────────────────────────────────────────────────
+	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
+	if err != nil {
+		return fmt.Errorf("parsing Redis URL: %w", err)
+	}
+	redisOpts.MaxRetries = cfg.Redis.MaxRetries
+	redisOpts.ReadTimeout = cfg.Redis.ReadTimeout
+	redisOpts.WriteTimeout = cfg.Redis.WriteTimeout
+	redisOpts.PoolSize = cfg.Redis.PoolSize
+
+	rdb := redis.NewClient(redisOpts)
+	defer func() {
+		if err := rdb.Close(); err != nil {
+			slog.Error("closing Redis", "error", err)
+		}
+	}()
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("pinging Redis: %w", err)
+	}
+	slog.Info("Redis connected", "addr", redisOpts.Addr)
+
+	// ── Ledger Backend ──────────────────────────────────────────────────
+	backend := ledger.NewPostgresBackend(pool)
+	if err := backend.Initialize(ctx); err != nil {
+		return fmt.Errorf("initializing ledger backend: %w", err)
+	}
+	slog.Info("ledger backend initialized")
+
+	// ── Server Key Pair (for payment token signing) ─────────────────────
+	serverKP, err := crypto.GenerateEd25519KeyPair()
+	if err != nil {
+		return fmt.Errorf("generating server key pair: %w", err)
+	}
+	serverDID := crypto.PrincipalDID(serverKP.PublicKey)
+	issuerPubKeyMultibase := crypto.PublicKeyMultibase(serverKP.PublicKey)
+	slog.Info("server identity generated", "did", serverDID)
+
+	// ── Identity Layer ──────────────────────────────────────────────────
+	didMgr := identity.NewDIDManager(backend)
+	credMgr := identity.NewCredentialManager(backend, didMgr)
+	delegationVerifier := identity.NewDelegationVerifier(backend, didMgr, credMgr)
+
+	// ── Discovery Layer ─────────────────────────────────────────────────
+	ansMgr := discovery.NewANSManager(backend)
+	wellKnownSvc := discovery.NewWellKnownService(ansMgr)
+
+	// ── Commerce Layer ──────────────────────────────────────────────────
+	tokenIssuer, err := commerce.NewTokenIssuer(serverKP, cfg.Commerce.PaymentTokenTTL)
+	if err != nil {
+		return fmt.Errorf("creating token issuer: %w", err)
+	}
+
+	tokenValidator := commerce.NewTokenValidator(backend)
+	spendingTracker := commerce.NewSpendingTracker(backend)
+	receiptGen := commerce.NewReceiptGenerator()
+	adapterRegistry := adapter.DefaultRegistry()
+	paymentExecutor := commerce.NewPaymentExecutor(
+		adapterRegistry, tokenValidator, spendingTracker, receiptGen, backend, logger,
+	)
+
+	// ── Onboarding Layer ────────────────────────────────────────────────
+	sessionMgr := onboarding.NewSessionManager(rdb, 30*time.Minute)
+	challengeSvc := onboarding.NewChallengeService(rdb, serverDID)
+	trustComputer := onboarding.NewTrustComputer(backend)
+	rateLimiter := onboarding.NewRateLimiter(rdb, 100, 1000, cfg.Server.RateLimitWindow)
+
+	// ── Event System ────────────────────────────────────────────────────
+	emitter := events.NewEmitter(logger)
+	_ = emitter // Subscriptions will be wired as features are exercised.
+
+	// ── WebSocket ───────────────────────────────────────────────────────
+	wsHub := websocketpkg.NewHub(logger)
+	ticketAuth := websocketpkg.NewTicketAuth(rdb)
+
+	// ── HTTP Router (chi) ───────────────────────────────────────────────
+	router := api.NewRouter(api.RouterConfig{
+		Logger:  logger,
+		Backend: backend,
+		Redis:   rdb,
+
+		DIDManager:         didMgr,
+		CredentialManager:  credMgr,
+		DelegationVerifier: delegationVerifier,
+
+		ANSManager: ansMgr,
+		WellKnown:  wellKnownSvc,
+
+		TokenIssuer:           tokenIssuer,
+		PaymentExecutor:       paymentExecutor,
+		IssuerPubKeyMultibase: issuerPubKeyMultibase,
+
+		SessionManager:   sessionMgr,
+		ChallengeService: challengeSvc,
+		TrustComputer:    trustComputer,
+		RateLimiter:      rateLimiter,
+
+		Hub:        wsHub,
+		TicketAuth: ticketAuth,
+
+		ServiceDID:      serverDID,
+		AllowedOrigins:  cfg.Server.AllowedOrigins,
+		RateLimitMax:    cfg.Server.RateLimitMax,
+		RateLimitWindow: cfg.Server.RateLimitWindow,
 	})
 
-	// Main HTTP server.
+	slog.Info("router initialized with all protocol handlers")
+
+	// ── Main HTTP Server ────────────────────────────────────────────────
 	srv := &http.Server{
 		Addr:         cfg.Server.Addr(),
-		Handler:      mux,
+		Handler:      router,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
-	// Metrics server (separate port for Prometheus scraping).
-	metricsMux := http.NewServeMux()
-	metricsMux.Handle("/metrics", promhttp.Handler())
+	// ── Metrics Server ──────────────────────────────────────────────────
 	metricsSrv := &http.Server{
 		Addr:    cfg.Server.MetricsAddr(),
-		Handler: metricsMux,
+		Handler: api.NewMetricsRouter(),
 	}
 
 	// Channel to collect server errors.
 	errCh := make(chan error, 2)
 
-	// Start metrics server.
 	go func() {
 		slog.Info("metrics server listening", "addr", cfg.Server.MetricsAddr())
 		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -100,7 +215,6 @@ func run() error {
 		}
 	}()
 
-	// Start main HTTP server.
 	go func() {
 		slog.Info("HTTP server listening", "addr", cfg.Server.Addr())
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -120,7 +234,6 @@ func run() error {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer shutdownCancel()
 
-	// Shutdown both servers concurrently.
 	shutdownErrCh := make(chan error, 2)
 	go func() { shutdownErrCh <- srv.Shutdown(shutdownCtx) }()
 	go func() { shutdownErrCh <- metricsSrv.Shutdown(shutdownCtx) }()
@@ -131,13 +244,33 @@ func run() error {
 		}
 	}
 
-	// TODO: Close PostgreSQL pool.
-	// TODO: Close Redis client.
-	// TODO: Stop ledger consensus engine.
-	// TODO: Stop event system.
-
 	slog.Info("server stopped gracefully")
 	return nil
+}
+
+// maskDSN masks the password in a PostgreSQL DSN for safe logging.
+func maskDSN(dsn string) string {
+	// Simple masking: find ://user:pass@ and replace pass with ***
+	for i := range len(dsn) - 3 {
+		if dsn[i:i+3] == "://" {
+			atIdx := -1
+			colonIdx := -1
+			for j := i + 3; j < len(dsn); j++ {
+				if dsn[j] == ':' && colonIdx == -1 {
+					colonIdx = j
+				}
+				if dsn[j] == '@' {
+					atIdx = j
+					break
+				}
+			}
+			if colonIdx > 0 && atIdx > colonIdx {
+				return dsn[:colonIdx+1] + "***" + dsn[atIdx:]
+			}
+			break
+		}
+	}
+	return dsn
 }
 
 // newLogger creates a structured slog.Logger based on config.

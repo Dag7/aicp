@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 
-	
 	"github.com/aicp-protocol/aicp/server/internal/identity"
 	"github.com/aicp-protocol/aicp/server/internal/onboarding"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
@@ -46,72 +47,91 @@ func (h *VerifyHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	resp := aicp.VerifyResponse{
-		DID:   req.DID,
-		Valid: true,
-	}
+	resp := aicp.VerifyResponse{DID: req.DID, Valid: true}
 
-	// Resolve the DID.
-	result, err := h.didMgr.Resolve(ctx, req.DID)
+	h.resolveDID(ctx, &resp)
+	if resp.Valid {
+		h.verifyDelegation(ctx, req.DID, &resp)
+	}
+	h.enrichTrustScore(ctx, req.DID, &resp)
+	h.verifyCredentials(ctx, req.Presentation, &resp)
+
+	JSON(w, http.StatusOK, resp)
+}
+
+// resolveDID resolves the DID document and checks for deactivation.
+func (h *VerifyHandler) resolveDID(ctx context.Context, resp *aicp.VerifyResponse) {
+	result, err := h.didMgr.Resolve(ctx, resp.DID)
 	if err != nil {
 		resp.Valid = false
-		resp.Errors = append(resp.Errors, "DID not found: "+err.Error())
-		JSON(w, http.StatusOK, resp)
+		resp.Errors = append(resp.Errors, fmt.Sprintf("DID not found: %v", err))
 		return
 	}
-
 	resp.Document = result.Document
-
 	if result.DocumentMetadata.Deactivated {
 		resp.Valid = false
 		resp.Errors = append(resp.Errors, "DID is deactivated")
-		JSON(w, http.StatusOK, resp)
+	}
+}
+
+// verifyDelegation checks the delegation chain for agent DIDs.
+func (h *VerifyHandler) verifyDelegation(ctx context.Context, did string, resp *aicp.VerifyResponse) {
+	if !identity.IsAgentDID(did) {
 		return
 	}
-
-	// Check delegation chain for agent DIDs.
-	if identity.IsAgentDID(req.DID) {
-		chain, err := h.delegator.VerifyDelegation(ctx, req.DID)
-		if err != nil {
-			resp.Errors = append(resp.Errors, "delegation verification failed: "+err.Error())
-		} else if chain != nil {
-			resp.DelegationChain = chain.Chain
-			if !chain.Valid {
-				resp.Valid = false
-				resp.Errors = append(resp.Errors, chain.Errors...)
-			}
-		}
+	chain, err := h.delegator.VerifyDelegation(ctx, did)
+	if err != nil {
+		resp.Errors = append(resp.Errors, fmt.Sprintf("delegation verification failed: %v", err))
+		return
 	}
+	if chain == nil {
+		return
+	}
+	resp.DelegationChain = chain.Chain
+	if !chain.Valid {
+		resp.Valid = false
+		resp.Errors = append(resp.Errors, chain.Errors...)
+	}
+}
 
-	// Get trust score.
-	score, err := h.trust.GetScore(ctx, req.DID)
+// enrichTrustScore adds the trust score to the response if available.
+func (h *VerifyHandler) enrichTrustScore(ctx context.Context, did string, resp *aicp.VerifyResponse) {
+	score, err := h.trust.GetScore(ctx, did)
 	if err == nil {
 		resp.TrustScore = score
 	}
+}
 
-	// Verify presentation credentials if provided.
-	if req.Presentation != nil {
-		for _, cred := range req.Presentation.VerifiableCredential {
-			verResult, err := h.credMgr.VerifyCredential(ctx, cred)
-			credVerification := aicp.CredentialVerification{
-				CredentialID: cred.ID,
-				Valid:        true,
-			}
-			if len(cred.Type) > 0 {
-				credVerification.Type = cred.Type[0]
-			}
-			if err != nil {
-				credVerification.Valid = false
-				credVerification.Error = err.Error()
-			} else if !verResult.Valid {
-				credVerification.Valid = false
-				if len(verResult.Errors) > 0 {
-					credVerification.Error = verResult.Errors[0]
-				}
-			}
-			resp.CredentialResults = append(resp.CredentialResults, credVerification)
+// verifyCredentials verifies all credentials in the presentation.
+func (h *VerifyHandler) verifyCredentials(ctx context.Context, presentation *aicp.VerifiablePresentation, resp *aicp.VerifyResponse) {
+	if presentation == nil {
+		return
+	}
+	for _, cred := range presentation.VerifiableCredential {
+		resp.CredentialResults = append(resp.CredentialResults, h.verifySingleCredential(ctx, cred))
+	}
+}
+
+// verifySingleCredential verifies a single credential and returns the result.
+func (h *VerifyHandler) verifySingleCredential(ctx context.Context, cred aicp.VerifiableCredential) aicp.CredentialVerification {
+	cv := aicp.CredentialVerification{
+		CredentialID: cred.ID,
+		Valid:        true,
+	}
+	if len(cred.Type) > 0 {
+		cv.Type = cred.Type[0]
+	}
+	verResult, err := h.credMgr.VerifyCredential(ctx, cred)
+	if err != nil {
+		cv.Valid = false
+		cv.Error = err.Error()
+		return cv
+	}
+	if !verResult.Valid {
+		cv.Valid = false
+		if len(verResult.Errors) > 0 {
+			cv.Error = verResult.Errors[0]
 		}
 	}
-
-	JSON(w, http.StatusOK, resp)
+	return cv
 }

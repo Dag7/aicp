@@ -367,17 +367,7 @@ func (m *MemoryBackend) ListReceiptsByAgent(_ context.Context, agentDID string, 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	offset := 0
-	if opts.Cursor != "" {
-		parsed, err := strconv.Atoi(opts.Cursor)
-		if err == nil {
-			offset = parsed
-		}
-	}
+	limit, offset := opts.Parse()
 
 	// Collect matching receipts.
 	var matching []aicp.SignedPaymentReceipt
@@ -557,17 +547,7 @@ func (m *MemoryBackend) SearchANSRecords(_ context.Context, query string, opts a
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	offset := 0
-	if opts.Cursor != "" {
-		parsed, err := strconv.Atoi(opts.Cursor)
-		if err == nil {
-			offset = parsed
-		}
-	}
+	limit, offset := opts.Parse()
 
 	queryLower := strings.ToLower(query)
 

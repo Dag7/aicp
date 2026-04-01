@@ -8,6 +8,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+const (
+	rateLimitDIDKeyPrefix = "aicp:ratelimit:onboard:did:"
+	rateLimitIPKeyPrefix  = "aicp:ratelimit:onboard:ip:"
+	anomalySessionPrefix  = "aicp:anomaly:sessions:"
+	maxSessionsPerWindow  = 10
+)
+
 // RateLimiter provides Redis-backed rate limiting for onboarding attempts.
 type RateLimiter struct {
 	redis     *redis.Client
@@ -28,13 +35,13 @@ func NewRateLimiter(rdb *redis.Client, maxPerDID, maxPerIP int, window time.Dura
 
 // CheckDID checks if a DID has exceeded the onboarding rate limit.
 func (rl *RateLimiter) CheckDID(ctx context.Context, did string) error {
-	key := "aicp:ratelimit:onboard:did:" + did
+	key := rateLimitDIDKeyPrefix + did
 	return rl.check(ctx, key, rl.maxPerDID)
 }
 
 // CheckIP checks if an IP address has exceeded the onboarding rate limit.
 func (rl *RateLimiter) CheckIP(ctx context.Context, ip string) error {
-	key := "aicp:ratelimit:onboard:ip:" + ip
+	key := rateLimitIPKeyPrefix + ip
 	return rl.check(ctx, key, rl.maxPerIP)
 }
 
@@ -42,11 +49,11 @@ func (rl *RateLimiter) CheckIP(ctx context.Context, ip string) error {
 func (rl *RateLimiter) RecordAttempt(ctx context.Context, did, ip string) error {
 	pipe := rl.redis.Pipeline()
 
-	didKey := "aicp:ratelimit:onboard:did:" + did
+	didKey := rateLimitDIDKeyPrefix + did
 	pipe.Incr(ctx, didKey)
 	pipe.Expire(ctx, didKey, rl.window)
 
-	ipKey := "aicp:ratelimit:onboard:ip:" + ip
+	ipKey := rateLimitIPKeyPrefix + ip
 	pipe.Incr(ctx, ipKey)
 	pipe.Expire(ctx, ipKey, rl.window)
 
@@ -78,7 +85,7 @@ func NewAnomalyDetector(rdb *redis.Client) *AnomalyDetector {
 // Check evaluates an onboarding request for suspicious patterns.
 func (ad *AnomalyDetector) Check(ctx context.Context, did, ip string) error {
 	// Check for rapid session creation from the same DID.
-	recentKey := "aicp:anomaly:sessions:" + did
+	recentKey := anomalySessionPrefix + did
 	count, err := ad.redis.Incr(ctx, recentKey).Result()
 	if err != nil {
 		return nil // Don't block on anomaly detection errors.
@@ -87,7 +94,7 @@ func (ad *AnomalyDetector) Check(ctx context.Context, did, ip string) error {
 		ad.redis.Expire(ctx, recentKey, time.Minute)
 	}
 
-	if count > 10 {
+	if count > maxSessionsPerWindow {
 		return fmt.Errorf("anomaly detected: excessive session creation from DID %s", did)
 	}
 

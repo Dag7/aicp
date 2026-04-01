@@ -25,7 +25,7 @@ type Error struct {
 func JSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(Response{
+	_ = json.NewEncoder(w).Encode(Response{
 		Success: true,
 		Data:    data,
 	})
@@ -35,7 +35,7 @@ func JSON(w http.ResponseWriter, status int, data any) {
 func JSONError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(Response{
+	_ = json.NewEncoder(w).Encode(Response{
 		Success: false,
 		Error: &Error{
 			Code:    code,
@@ -48,7 +48,7 @@ func JSONError(w http.ResponseWriter, status int, code, message string) {
 func JSONErrorDetail(w http.ResponseWriter, status int, code, message, detail string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(Response{
+	_ = json.NewEncoder(w).Encode(Response{
 		Success: false,
 		Error: &Error{
 			Code:    code,
@@ -70,6 +70,6 @@ func ProtocolErrorResponse(w http.ResponseWriter, err error) {
 
 // DecodeJSON decodes the request body into the given destination.
 func DecodeJSON(r *http.Request, dest any) error {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	return json.NewDecoder(r.Body).Decode(dest)
 }
