@@ -543,6 +543,7 @@ const account = await session.provision();</code></pre>
     <tr><td><code>/aicp/v1/discover/search</code></td><td>GET</td><td>Discovery</td><td>None</td></tr>
     <tr><td><code>/aicp/v1/discover/register</code></td><td>POST</td><td>Discovery</td><td>DID-Auth</td></tr>
     <tr><td><code>/aicp/v1/onboard</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/onboard/{id}</code></td><td>GET</td><td>Onboarding</td><td>None</td></tr>
     <tr><td><code>/aicp/v1/onboard/{id}/negotiate</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
     <tr><td><code>/aicp/v1/onboard/{id}/authorize</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
     <tr><td><code>/aicp/v1/onboard/{id}/provision</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
@@ -934,6 +935,10 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     <li>Issues a DID-Auth challenge (random nonce + domain + timestamp, 5-minute expiry)</li>
     <li>Returns the session ID and challenge to the agent</li>
   </ol>
+  <p>
+    At any point during the flow, the agent can query the session state via
+    <code>GET /aicp/v1/onboard/{id}</code> to check the current phase, timestamps, and any failure reason.
+  </p>
 
   <h4>Phase 2: Identity Presentation</h4>
   <p>

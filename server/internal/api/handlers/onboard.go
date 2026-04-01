@@ -189,6 +189,16 @@ func (h *OnboardHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Status handles GET /aicp/v1/onboard/{id} — returns current session state.
+func (h *OnboardHandler) Status(w http.ResponseWriter, r *http.Request) {
+	state, ok := h.getSession(w, r)
+	if !ok {
+		return
+	}
+
+	JSON(w, http.StatusOK, state)
+}
+
 // Provision handles POST /aicp/v1/onboard/{id}/provision — Phase 4.
 func (h *OnboardHandler) Provision(w http.ResponseWriter, r *http.Request) {
 	state, ok := h.getSession(w, r)

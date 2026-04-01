@@ -98,9 +98,45 @@ func newOnboardStatusCmd() *cobra.Command {
 		Short: "Check onboarding session status",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Printf("Session: %s\n", args[0])
-			fmt.Println("Use the API directly to check session state.")
-			return nil
+			sessionID := args[0]
+
+			resp, err := http.Get(serverURL + "/aicp/v1/onboard/" + sessionID)
+			if err != nil {
+				return fmt.Errorf("request failed: %w", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			data, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("reading response: %w", err)
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("server error (HTTP %d): %s", resp.StatusCode, string(data))
+			}
+
+			var result map[string]any
+			if err := json.Unmarshal(data, &result); err != nil {
+				return fmt.Errorf("parsing response: %w", err)
+			}
+
+			respData, ok := result["data"].(map[string]any)
+			if !ok {
+				return fmt.Errorf("unexpected response format: %s", string(data))
+			}
+
+			return printOutput(respData, func() {
+				fmt.Printf("Session:    %v\n", respData["session_id"])
+				fmt.Printf("Phase:      %v\n", respData["phase"])
+				fmt.Printf("Agent DID:  %v\n", respData["agent_did"])
+				fmt.Printf("Service:    %v\n", respData["service_did"])
+				fmt.Printf("Started:    %v\n", respData["started_at"])
+				fmt.Printf("Updated:    %v\n", respData["updated_at"])
+				fmt.Printf("Expires:    %v\n", respData["expires_at"])
+				if reason, ok := respData["failed_reason"].(string); ok && reason != "" {
+					fmt.Printf("Failure:    %s\n", reason)
+				}
+			})
 		},
 	}
 }

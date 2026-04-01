@@ -148,6 +148,7 @@ initiated -> identity_presented -> capabilities_negotiated -> payment_authorized
 | `/aicp/v1/discover/{did}` | GET | Discovery | Get ANS record by DID |
 | `/aicp/v1/trust/{did}` | GET | Trust | Get trust score |
 | `/aicp/v1/onboard` | POST | Onboarding | Initiate registration |
+| `/aicp/v1/onboard/{id}` | GET | Onboarding | Get session status |
 | `/aicp/v1/onboard/{id}/negotiate` | POST | Onboarding | Negotiate capabilities |
 | `/aicp/v1/onboard/{id}/authorize` | POST | Onboarding | Authorize payment |
 | `/aicp/v1/onboard/{id}/provision` | POST | Onboarding | Provision agent |

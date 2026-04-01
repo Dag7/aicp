@@ -144,6 +144,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 				cfg.ServiceDID,
 			)
 			r.Post("/onboard", onboard.Initiate)
+			r.Get("/onboard/{id}", onboard.Status)
 			r.Post("/onboard/{id}/negotiate", onboard.Negotiate)
 			r.Post("/onboard/{id}/authorize", onboard.Authorize)
 			r.Post("/onboard/{id}/provision", onboard.Provision)
