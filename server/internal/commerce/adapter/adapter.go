@@ -46,11 +46,11 @@ type PaymentAdapter interface {
 
 // CreateIntentParams holds the parameters for creating a payment intent.
 type CreateIntentParams struct {
-	Amount         aicp.MoneyAmount `json:"amount"`
-	PayerDID       string           `json:"payer_did"`
-	PayeeDID       string           `json:"payee_did"`
-	Description    string           `json:"description"`
-	IdempotencyKey string           `json:"idempotency_key"`
+	Amount         aicp.MoneyAmount  `json:"amount"`
+	PayerDID       string            `json:"payer_did"`
+	PayeeDID       string            `json:"payee_did"`
+	Description    string            `json:"description"`
+	IdempotencyKey string            `json:"idempotency_key"`
 	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
@@ -90,10 +90,10 @@ type PaymentRefund struct {
 
 // PaymentStatus holds the current status of a payment.
 type PaymentStatus struct {
-	IntentID   string           `json:"intent_id"`
-	Status     string           `json:"status"`
-	Amount     aicp.MoneyAmount `json:"amount"`
-	SettledAt  *time.Time       `json:"settled_at,omitempty"`
+	IntentID  string           `json:"intent_id"`
+	Status    string           `json:"status"`
+	Amount    aicp.MoneyAmount `json:"amount"`
+	SettledAt *time.Time       `json:"settled_at,omitempty"`
 }
 
 // WebhookEvent represents a parsed and verified webhook event.

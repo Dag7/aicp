@@ -1205,9 +1205,10 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
   <table>
     <tr><th>Property</th><th>Mechanism</th></tr>
     <tr><td>Integrity</td><td>JWS EdDSA signature — any modification invalidates the token</td></tr>
-    <tr><td>Replay prevention</td><td><code>jti</code> uniqueness enforced in <code>used_tokens</code> table (PostgreSQL) + Redis nonce cache</td></tr>
+    <tr><td>Replay prevention</td><td>Atomic <code>MarkTokenUsed</code> via PostgreSQL unique constraint — concurrent duplicates fail at the database level (error 23505), eliminating TOCTOU race conditions. Supplemented by Redis nonce cache and adapter-level <code>idempotencyKey</code>.</td></tr>
     <tr><td>Time-bound</td><td>15-minute expiry window (<code>exp</code> claim)</td></tr>
-    <tr><td>Amount-bound</td><td>Exact amount in claims; <code>maxAmount</code> caps flexibility</td></tr>
+    <tr><td>Amount-bound</td><td>Exact amount in claims; maximum of 999,999,999.99; currency validated against ISO 4217 allowlist</td></tr>
+    <tr><td>Spending limits</td><td>Atomic <code>CheckAndRecordSpending</code> combines limit verification and recording in a single SQL CTE with <code>FOR UPDATE</code> row locking — prevents concurrent overspend across per-transaction, daily, and monthly limits</td></tr>
     <tr><td>Scope-bound</td><td>Purpose, service category, and audience restrict token use</td></tr>
     <tr><td>Idempotency</td><td><code>idempotencyKey</code> prevents duplicate charges at adapter level</td></tr>
     <tr><td>Non-repudiation</td><td>Token signed by issuer's Ed25519 key; receipt signed with hash</td></tr>
@@ -1564,22 +1565,26 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
   <table>
     <tr><th>Threat</th><th>Mitigation</th></tr>
     <tr><td>Agent key compromise</td><td>Independent Ed25519 keys per agent; principal can deactivate compromised agent DID without affecting others. Revocation broadcast via WebSocket events.</td></tr>
-    <tr><td>Payment replay attacks</td><td>Triple defense: unique <code>jti</code> in PostgreSQL <code>used_tokens</code> table, <code>nonce</code> in Redis cache, and <code>idempotencyKey</code> at the payment adapter level.</td></tr>
-    <tr><td>Token theft</td><td>Payment tokens are time-bound (15-minute expiry), amount-bound (exact value in claims), and audience-bound (specific service DID).</td></tr>
-    <tr><td>Impersonation</td><td>DID-Auth requires Ed25519 signature over each request; no shared secrets or bearer tokens.</td></tr>
-    <tr><td>Unauthorized spending</td><td>Three-tier spending limits (per-transaction, daily, monthly) enforced server-side. High-value transactions trigger principal approval workflow.</td></tr>
+    <tr><td>Payment replay attacks</td><td>Atomic double-spend prevention: the <code>MarkTokenUsed</code> operation uses a PostgreSQL INSERT with unique constraint on <code>jti</code> — concurrent duplicate requests fail atomically (error code 23505), eliminating TOCTOU race conditions. Supplemented by <code>nonce</code> in Redis cache and <code>idempotencyKey</code> at the payment adapter level.</td></tr>
+    <tr><td>Token theft</td><td>Payment tokens are time-bound (15-minute expiry), amount-bound (exact value, max 999,999,999.99), and audience-bound (specific service DID). Currency validated against ISO 4217 allowlist.</td></tr>
+    <tr><td>Impersonation</td><td>DID-Auth requires Ed25519 signature over each request; no shared secrets or bearer tokens. Challenge-response uses <code>crypto/subtle.ConstantTimeCompare</code> to prevent timing attacks.</td></tr>
+    <tr><td>Unauthorized spending</td><td>Three-tier spending limits (per-transaction, daily, monthly) enforced atomically — the <code>CheckAndRecordSpending</code> operation combines limit verification and recording in a single PostgreSQL CTE with <code>FOR UPDATE</code> row locking, preventing concurrent overspend. High-value transactions trigger principal approval workflow with 15-minute TTL.</td></tr>
     <tr><td>Credential forgery</td><td>All credentials are JWS-signed by the issuer; verification checks signature, expiry, and revocation status.</td></tr>
-    <tr><td>Ledger tampering</td><td>Append-only blocks with Merkle roots and 2f+1 validator signatures. Block hash chain prevents retroactive modification.</td></tr>
+    <tr><td>Ledger tampering</td><td>Append-only blocks with RFC 6962-compliant Merkle trees (0x00 leaf prefix, 0x01 branch prefix for domain separation) and 2f+1 validator signatures. Block hash chain prevents retroactive modification.</td></tr>
     <tr><td>Man-in-the-middle</td><td>All transport over TLS. DID-Auth signatures provide end-to-end integrity independent of transport security.</td></tr>
-    <tr><td>Denial of service</td><td>Redis-backed rate limiting per DID and per IP. Trust score gating for onboarding. Session limits prevent resource exhaustion.</td></tr>
+    <tr><td>Information leakage</td><td>Error responses sanitized via <code>ProtocolErrorResponse</code> — internal errors return generic "an internal error occurred", never exposing database details, stack traces, or file paths.</td></tr>
+    <tr><td>SSRF / Federation abuse</td><td>Domain validation rejects path traversal and special characters. Federation peer responses capped at 1 MiB via <code>io.LimitReader</code>.</td></tr>
+    <tr><td>WebSocket auth bypass</td><td>WebSocket upgrade requires <code>TicketAuth</code> configuration — returns 503 when unconfigured rather than silently allowing unauthenticated connections.</td></tr>
+    <tr><td>Denial of service</td><td>Redis-backed rate limiting per DID and per IP. Trust score gating for onboarding. Session limits prevent resource exhaustion. Request body size capped at 1 MB.</td></tr>
     <tr><td>Validator collusion</td><td>2f+1 quorum requirement means at least two-thirds of validators must agree. Validator set managed by consortium governance.</td></tr>
   </table>
 
   <h3>12.2 Cryptographic Choices</h3>
   <ul>
     <li><strong>Ed25519:</strong> All signing operations use Ed25519 via Go's stdlib <code>crypto/ed25519</code> (server), <code>@noble/ed25519</code> (TypeScript SDK), and <code>PyNaCl</code> (Python SDK). Ed25519 provides 128-bit security, deterministic signatures, and fast verification.</li>
-    <li><strong>SHA-256:</strong> Used for document hashes, Merkle trees, DID generation (truncated), block hashes, and receipt hashes.</li>
-    <li><strong>JWS/EdDSA:</strong> Payment tokens use JSON Web Signature with EdDSA algorithm via <code>go-jose/v4</code>.</li>
+    <li><strong>SHA-256:</strong> Used for document hashes, Merkle trees (with RFC 6962 domain separation), DID generation (truncated), block hashes, and receipt hashes.</li>
+    <li><strong>JWS/EdDSA:</strong> Payment tokens use JSON Web Signature with EdDSA algorithm via <code>go-jose/v4</code>. Algorithm allowlisting enforces EdDSA only — no algorithm confusion attacks.</li>
+    <li><strong>Constant-time comparison:</strong> All security-critical comparisons (challenge-response verification) use <code>crypto/subtle.ConstantTimeCompare</code> to prevent timing side-channel attacks.</li>
     <li><strong>Base58btc:</strong> Multibase encoding for public keys and signatures (compact, no ambiguous characters).</li>
   </ul>
   <p>

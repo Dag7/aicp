@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -103,9 +105,9 @@ func (m *mockLedgerBackend) ListReceiptsByAgent(_ context.Context, did string, _
 }
 
 // Remaining LedgerBackend stubs.
-func (m *mockLedgerBackend) Initialize(context.Context) error                 { return nil }
-func (m *mockLedgerBackend) Close() error                                     { return nil }
-func (m *mockLedgerBackend) Healthy(context.Context) error                    { return nil }
+func (m *mockLedgerBackend) Initialize(context.Context) error { return nil }
+func (m *mockLedgerBackend) Close() error                     { return nil }
+func (m *mockLedgerBackend) Healthy(context.Context) error    { return nil }
 func (m *mockLedgerBackend) AnchorDID(context.Context, string, aicp.DIDDocument, aicp.Proof) (*aicp.AnchorReceipt, error) {
 	return nil, nil
 }
@@ -139,7 +141,7 @@ func (m *mockLedgerBackend) StoreReceipt(context.Context, aicp.SignedPaymentRece
 func (m *mockLedgerBackend) GetReceipt(context.Context, string) (*aicp.SignedPaymentReceipt, error) {
 	return nil, aicp.ErrNotFound
 }
-func (m *mockLedgerBackend) IsTokenUsed(context.Context, string) (bool, error)  { return false, nil }
+func (m *mockLedgerBackend) IsTokenUsed(context.Context, string) (bool, error)   { return false, nil }
 func (m *mockLedgerBackend) MarkTokenUsed(context.Context, string) error         { return nil }
 func (m *mockLedgerBackend) AppendEntry(context.Context, aicp.LedgerEntry) error { return nil }
 func (m *mockLedgerBackend) GetPendingEntries(context.Context) ([]aicp.LedgerEntry, error) {
@@ -152,14 +154,14 @@ func (m *mockLedgerBackend) GetLatestBlock(context.Context) (*aicp.Block, error)
 func (m *mockLedgerBackend) GetBlock(context.Context, uint64) (*aicp.Block, error) {
 	return nil, aicp.ErrNotFound
 }
-func (m *mockLedgerBackend) StoreANSRecord(context.Context, aicp.ANSRecord) error    { return nil }
+func (m *mockLedgerBackend) StoreANSRecord(context.Context, aicp.ANSRecord) error { return nil }
 func (m *mockLedgerBackend) GetANSRecord(context.Context, string) (*aicp.ANSRecord, error) {
 	return nil, aicp.ErrNotFound
 }
 func (m *mockLedgerBackend) SearchANSRecords(context.Context, string, aicp.PaginationOpts) (*aicp.PaginatedResult[aicp.ANSRecord], error) {
 	return &aicp.PaginatedResult[aicp.ANSRecord]{}, nil
 }
-func (m *mockLedgerBackend) DeleteANSRecord(context.Context, string) error         { return nil }
+func (m *mockLedgerBackend) DeleteANSRecord(context.Context, string) error           { return nil }
 func (m *mockLedgerBackend) RegisterValidator(context.Context, aicp.Validator) error { return nil }
 func (m *mockLedgerBackend) RemoveValidator(context.Context, string) error           { return nil }
 func (m *mockLedgerBackend) ListValidators(context.Context) ([]aicp.Validator, error) {
@@ -176,6 +178,9 @@ func (m *mockLedgerBackend) GetMonthlySpending(context.Context, string, string) 
 }
 func (m *mockLedgerBackend) RecordSpending(context.Context, string, aicp.MoneyAmount) error {
 	return nil
+}
+func (m *mockLedgerBackend) CheckAndRecordSpending(context.Context, string, aicp.MoneyAmount, string, string) (bool, error) {
+	return true, nil
 }
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
@@ -564,4 +569,224 @@ func TestTrustComputer_GetScore_Exists(t *testing.T) {
 	score, err := tc.GetScore(ctx, "did:aicp:scored")
 	require.NoError(t, err)
 	assert.Equal(t, 750, score)
+}
+
+// ─── Redis Test Helper ───────────────────────────────────────────────────────
+
+// setupMiniredis creates a miniredis instance and a go-redis client connected
+// to it. The server is automatically closed when the test ends.
+func setupMiniredis(t *testing.T) *redis.Client {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	return redis.NewClient(&redis.Options{Addr: mr.Addr()})
+}
+
+// setupMiniredisWithServer returns both the client and the miniredis server
+// so tests can manipulate time or inspect keys directly.
+func setupMiniredisWithServer(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	return rdb, mr
+}
+
+// ─── Security: Challenge Tests ───────────────────────────────────────────────
+
+func TestChallenge_TimingAttackResistance(t *testing.T) {
+	// Verify that challenge verification uses the constant-time comparison code
+	// path (crypto/subtle.ConstantTimeCompare). We exercise both the success and
+	// prefix-collision failure paths — the real defence is in challenge.go's use
+	// of subtle.ConstantTimeCompare, which this test exercises end-to-end.
+	rdb := setupMiniredis(t)
+	cs := NewChallengeService(rdb, "test.aicp.dev")
+	ctx := context.Background()
+
+	challenge, err := cs.Issue(ctx, "timing-session")
+	require.NoError(t, err)
+	require.NotEmpty(t, challenge.Challenge)
+
+	// Correct value succeeds.
+	correctValue := challenge.Challenge
+	err = cs.Verify(ctx, "timing-session", correctValue)
+	require.NoError(t, err, "correct challenge value should verify successfully")
+
+	// Re-issue because verification consumes the challenge.
+	challenge2, err := cs.Issue(ctx, "timing-session-2")
+	require.NoError(t, err)
+
+	// Construct a value that shares a long prefix with the correct one.
+	wrongValue := challenge2.Challenge[:len(challenge2.Challenge)-1] + "0"
+	if wrongValue == challenge2.Challenge {
+		// Extremely unlikely, but handle the edge case.
+		wrongValue = challenge2.Challenge[:len(challenge2.Challenge)-1] + "1"
+	}
+
+	err = cs.Verify(ctx, "timing-session-2", wrongValue)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "challenge mismatch",
+		"prefix-sharing wrong value must be rejected")
+}
+
+func TestChallenge_OneTimeUse(t *testing.T) {
+	rdb := setupMiniredis(t)
+	cs := NewChallengeService(rdb, "test.aicp.dev")
+	ctx := context.Background()
+
+	challenge, err := cs.Issue(ctx, "onetime-session")
+	require.NoError(t, err)
+
+	// First verification succeeds.
+	err = cs.Verify(ctx, "onetime-session", challenge.Challenge)
+	require.NoError(t, err, "first verification should succeed")
+
+	// Second verification of the same challenge must fail — the key was deleted.
+	err = cs.Verify(ctx, "onetime-session", challenge.Challenge)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found or expired",
+		"replayed challenge should be rejected after one-time use")
+}
+
+func TestChallenge_EmptyInputs(t *testing.T) {
+	rdb := setupMiniredis(t)
+	cs := NewChallengeService(rdb, "test.aicp.dev")
+	ctx := context.Background()
+
+	t.Run("Issue with empty sessionID", func(t *testing.T) {
+		challenge, err := cs.Issue(ctx, "")
+		require.Error(t, err)
+		assert.Nil(t, challenge)
+		assert.Contains(t, err.Error(), "sessionID is required")
+	})
+
+	t.Run("Verify with empty sessionID", func(t *testing.T) {
+		err := cs.Verify(ctx, "", "some-value")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "sessionID and challengeValue are required")
+	})
+
+	t.Run("Verify with empty challengeValue", func(t *testing.T) {
+		err := cs.Verify(ctx, "some-session", "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "sessionID and challengeValue are required")
+	})
+
+	t.Run("Verify with both empty", func(t *testing.T) {
+		err := cs.Verify(ctx, "", "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "sessionID and challengeValue are required")
+	})
+}
+
+// ─── Security: Session Tests ─────────────────────────────────────────────────
+
+func TestSession_EmptyInputs(t *testing.T) {
+	rdb := setupMiniredis(t)
+	sm := NewSessionManager(rdb, 30*time.Minute)
+	ctx := context.Background()
+
+	t.Run("empty agentDID", func(t *testing.T) {
+		state, err := sm.Create(ctx, "", "did:aicp:service123")
+		require.Error(t, err)
+		assert.Nil(t, state)
+		assert.Contains(t, err.Error(), "agentDID and serviceDID are required")
+	})
+
+	t.Run("empty serviceDID", func(t *testing.T) {
+		state, err := sm.Create(ctx, "did:aicp:agent123", "")
+		require.Error(t, err)
+		assert.Nil(t, state)
+		assert.Contains(t, err.Error(), "agentDID and serviceDID are required")
+	})
+
+	t.Run("both empty", func(t *testing.T) {
+		state, err := sm.Create(ctx, "", "")
+		require.Error(t, err)
+		assert.Nil(t, state)
+		assert.Contains(t, err.Error(), "agentDID and serviceDID are required")
+	})
+}
+
+func TestSession_ExpiredSession(t *testing.T) {
+	rdb, mr := setupMiniredisWithServer(t)
+	// Use a very short TTL so we can fast-forward past it.
+	sm := NewSessionManager(rdb, 2*time.Second)
+	ctx := context.Background()
+
+	state, err := sm.Create(ctx, "did:aicp:agent-exp", "did:aicp:service-exp")
+	require.NoError(t, err)
+	require.NotNil(t, state)
+
+	// Session should be retrievable immediately.
+	got, err := sm.Get(ctx, state.SessionID)
+	require.NoError(t, err)
+	assert.Equal(t, state.SessionID, got.SessionID)
+
+	// Fast-forward miniredis past the TTL.
+	mr.FastForward(3 * time.Second)
+
+	// Session should no longer exist in Redis after expiry.
+	got, err = sm.Get(ctx, state.SessionID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, aicp.ErrNotFound,
+		"expired session should return ErrNotFound")
+	assert.Nil(t, got)
+}
+
+// ─── Security: Rate Limiter Tests ────────────────────────────────────────────
+
+func TestRateLimiter_BlocksExcessiveRequests(t *testing.T) {
+	rdb := setupMiniredis(t)
+	maxPerDID := 3
+	maxPerIP := 5
+	window := 10 * time.Minute
+
+	rl := NewRateLimiter(rdb, maxPerDID, maxPerIP, window)
+	ctx := context.Background()
+
+	did := "did:aicp:spammer"
+	ip := "192.168.1.100"
+
+	t.Run("DID rate limit", func(t *testing.T) {
+		// Record attempts up to the limit.
+		for i := 0; i < maxPerDID; i++ {
+			err := rl.RecordAttempt(ctx, did, ip)
+			require.NoError(t, err, "RecordAttempt should not fail")
+		}
+
+		// DID limit should now be reached.
+		err := rl.CheckDID(ctx, did)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "rate limit exceeded",
+			"DID should be blocked after exceeding maxPerDID")
+	})
+
+	t.Run("IP rate limit", func(t *testing.T) {
+		// Use a fresh DID but the same IP that already has 3 counts.
+		// Record 2 more to reach the IP limit of 5.
+		freshDID := "did:aicp:legitimate"
+		for i := 0; i < maxPerIP-maxPerDID; i++ {
+			err := rl.RecordAttempt(ctx, freshDID, ip)
+			require.NoError(t, err)
+		}
+
+		// IP limit should now be reached.
+		err := rl.CheckIP(ctx, ip)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "rate limit exceeded",
+			"IP should be blocked after exceeding maxPerIP")
+	})
+
+	t.Run("different IP is not blocked", func(t *testing.T) {
+		// A different IP should still be allowed.
+		err := rl.CheckIP(ctx, "10.0.0.1")
+		require.NoError(t, err,
+			"unrelated IP should not be rate-limited")
+	})
+
+	t.Run("different DID is not blocked", func(t *testing.T) {
+		// A different DID should still be allowed.
+		err := rl.CheckDID(ctx, "did:aicp:innocent")
+		require.NoError(t, err,
+			"unrelated DID should not be rate-limited")
+	})
 }

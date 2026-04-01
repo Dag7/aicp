@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"strings"
@@ -215,7 +216,9 @@ func TestMerkleRoot_SingleLeaf(t *testing.T) {
 	leaf := SHA256Hex([]byte("leaf0"))
 	root, err := MerkleRoot([]string{leaf})
 	require.NoError(t, err)
-	assert.Equal(t, leaf, root)
+	// With domain separation (RFC 6962), the root is H(0x00 || leaf), not the raw leaf.
+	assert.NotEqual(t, leaf, root)
+	assert.Len(t, root, 64)
 }
 
 func TestMerkleRoot_TwoLeaves(t *testing.T) {
@@ -270,13 +273,21 @@ func TestMerkleVerifyProof_TwoLeaves(t *testing.T) {
 	root, err := MerkleRoot([]string{leaf0, leaf1})
 	require.NoError(t, err)
 
-	// For a 2-leaf tree, the proof for leaf0 (index=0) is [leaf1].
-	valid, err := MerkleVerifyProof(leaf0, []string{leaf1}, 0, root)
+	// With domain separation, proof siblings are the hashed leaf nodes: H(0x00 || rawLeaf).
+	leaf0Bytes, _ := hex.DecodeString(leaf0)
+	leaf1Bytes, _ := hex.DecodeString(leaf1)
+	hashedLeaf0 := sha256.Sum256(append([]byte{0x00}, leaf0Bytes...))
+	hashedLeaf1 := sha256.Sum256(append([]byte{0x00}, leaf1Bytes...))
+	sibling1 := hex.EncodeToString(hashedLeaf1[:])
+	sibling0 := hex.EncodeToString(hashedLeaf0[:])
+
+	// For a 2-leaf tree, the proof for leaf0 (index=0) is [hashedLeaf1].
+	valid, err := MerkleVerifyProof(leaf0, []string{sibling1}, 0, root)
 	require.NoError(t, err)
 	assert.True(t, valid)
 
-	// Proof for leaf1 (index=1) is [leaf0].
-	valid, err = MerkleVerifyProof(leaf1, []string{leaf0}, 1, root)
+	// Proof for leaf1 (index=1) is [hashedLeaf0].
+	valid, err = MerkleVerifyProof(leaf1, []string{sibling0}, 1, root)
 	require.NoError(t, err)
 	assert.True(t, valid)
 }
@@ -309,9 +320,9 @@ func TestJWS_SignAndVerify(t *testing.T) {
 	require.NoError(t, err)
 
 	claims := map[string]any{
-		"iss":     "did:aicp:test123",
-		"sub":     "payment",
-		"amount":  "10.00",
+		"iss":      "did:aicp:test123",
+		"sub":      "payment",
+		"amount":   "10.00",
 		"currency": "USD",
 	}
 
@@ -477,4 +488,131 @@ func TestSignJWS_DifferentTypes(t *testing.T) {
 		require.NoError(t, err, "type: %s", typ)
 		assert.Contains(t, string(decoded), "test")
 	}
+}
+
+// ─── Security-focused Tests ─────────────────────────────────────────────────
+
+// TestMerkleRoot_SecondPreimageResistance verifies that the RFC 6962 domain
+// separation (0x00 prefix for leaves, 0x01 prefix for internal nodes) prevents
+// second preimage attacks. Without domain separation an attacker can craft a
+// "leaf" whose value equals the hash of two other leaves, collapsing a 2-leaf
+// tree into a 1-leaf tree with the same root. With domain separation the two
+// constructions MUST produce different roots.
+func TestMerkleRoot_SecondPreimageResistance(t *testing.T) {
+	leafA := SHA256Hex([]byte("leafA"))
+	leafB := SHA256Hex([]byte("leafB"))
+
+	// Root of the 2-leaf tree: H(0x01 || H(0x00||A) || H(0x00||B)).
+	twoLeafRoot, err := MerkleRoot([]string{leafA, leafB})
+	require.NoError(t, err)
+
+	// Compute the internal node that would be H(0x00||A) || H(0x00||B)
+	// concatenated, then hash it as if it were a single "leaf" in MerkleRoot.
+	leafABytes, err := hex.DecodeString(leafA)
+	require.NoError(t, err)
+	leafBBytes, err := hex.DecodeString(leafB)
+	require.NoError(t, err)
+
+	hashedLeafA := sha256.Sum256(append([]byte{0x00}, leafABytes...))
+	hashedLeafB := sha256.Sum256(append([]byte{0x00}, leafBBytes...))
+
+	// Build a forged single leaf whose raw bytes equal the concatenation of
+	// the two internal hashed-leaf nodes.
+	forgedLeafData := append(hashedLeafA[:], hashedLeafB[:]...)
+	forgedLeafHex := hex.EncodeToString(forgedLeafData)
+
+	// A 1-leaf MerkleRoot will apply: H(0x00 || forgedLeafData).
+	// Without domain separation this would equal the 2-leaf root
+	// (which is H(hashedA || hashedB)). With domain separation, the 2-leaf
+	// root includes the 0x01 branch prefix, so they must differ.
+	oneLeafRoot, err := MerkleRoot([]string{forgedLeafHex})
+	require.NoError(t, err)
+
+	assert.NotEqual(t, twoLeafRoot, oneLeafRoot,
+		"domain separation must prevent a single forged leaf from colliding with a 2-leaf tree root")
+}
+
+// TestMerkleRoot_EmptyInput confirms that an empty leaf set returns a
+// deterministic sentinel hash and does not panic.
+func TestMerkleRoot_EmptyInput(t *testing.T) {
+	root, err := MerkleRoot([]string{})
+	require.NoError(t, err)
+	assert.NotEmpty(t, root, "empty input must produce a non-empty sentinel root")
+	assert.Len(t, root, 64, "root must be a hex-encoded SHA-256 (64 hex chars)")
+
+	// Must be deterministic.
+	root2, err := MerkleRoot([]string{})
+	require.NoError(t, err)
+	assert.Equal(t, root, root2, "empty root must be deterministic")
+
+	// Nil slice should behave the same.
+	root3, err := MerkleRoot(nil)
+	require.NoError(t, err)
+	assert.Equal(t, root, root3, "nil and empty slice must produce the same sentinel root")
+}
+
+// TestSignVerify_WrongKey generates two independent key pairs, signs with one,
+// and verifies with the other. Verification must fail.
+func TestSignVerify_WrongKey(t *testing.T) {
+	kp1, err := GenerateEd25519KeyPair()
+	require.NoError(t, err)
+	kp2, err := GenerateEd25519KeyPair()
+	require.NoError(t, err)
+
+	message := []byte("sensitive agent delegation payload")
+	sig := Sign(kp1.PrivateKey, message)
+
+	assert.False(t, Verify(kp2.PublicKey, message, sig),
+		"signature must not verify with a different public key")
+
+	// Also verify the correct key still works (sanity).
+	assert.True(t, Verify(kp1.PublicKey, message, sig),
+		"signature must verify with the correct public key")
+}
+
+// TestSignVerify_TamperedPayload signs a payload, flips a single byte, and
+// confirms that verification fails. This tests the integrity guarantee of
+// Ed25519 signatures at the granularity of a single-bit change.
+func TestSignVerify_TamperedPayload(t *testing.T) {
+	kp, err := GenerateEd25519KeyPair()
+	require.NoError(t, err)
+
+	original := []byte("payment:execute amount=500.00 currency=USD")
+	sig := Sign(kp.PrivateKey, original)
+
+	// Sanity: original verifies.
+	require.True(t, Verify(kp.PublicKey, original, sig))
+
+	// Tamper with a single byte in the middle of the payload.
+	tampered := make([]byte, len(original))
+	copy(tampered, original)
+	tampered[len(tampered)/2] ^= 0x01 // flip one bit
+
+	assert.False(t, Verify(kp.PublicKey, tampered, sig),
+		"signature must not verify after a single byte is tampered")
+
+	// Tamper at the start.
+	tamperedStart := make([]byte, len(original))
+	copy(tamperedStart, original)
+	tamperedStart[0] ^= 0xFF
+
+	assert.False(t, Verify(kp.PublicKey, tamperedStart, sig),
+		"signature must not verify after first byte is tampered")
+
+	// Tamper at the end.
+	tamperedEnd := make([]byte, len(original))
+	copy(tamperedEnd, original)
+	tamperedEnd[len(tamperedEnd)-1] ^= 0x01
+
+	assert.False(t, Verify(kp.PublicKey, tamperedEnd, sig),
+		"signature must not verify after last byte is tampered")
+
+	// Truncated payload.
+	assert.False(t, Verify(kp.PublicKey, original[:len(original)-1], sig),
+		"signature must not verify with truncated payload")
+
+	// Extended payload.
+	extended := append(original, 0x00)
+	assert.False(t, Verify(kp.PublicKey, extended, sig),
+		"signature must not verify with extended payload")
 }

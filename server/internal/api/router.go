@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"time"
 
+	ws "github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
-	ws "github.com/coder/websocket"
 
 	"github.com/aicp-protocol/aicp/server/internal/api/handlers"
 	"github.com/aicp-protocol/aicp/server/internal/api/middleware"
@@ -209,7 +209,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireAuth())
 				r.Post("/ws/ticket", func(w http.ResponseWriter, r *http.Request) {
-					did, _ := middleware.GetAuthDID(r.Context())
+					did, ok := middleware.GetAuthDID(r.Context())
+					if !ok || did == "" {
+						handlers.JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
+						return
+					}
 					ticket, err := cfg.TicketAuth.IssueTicket(r.Context(), did)
 					if err != nil {
 						handlers.JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to issue ticket")
@@ -229,14 +233,14 @@ func NewRouter(cfg RouterConfig) http.Handler {
 					return
 				}
 
-				did := ""
-				if cfg.TicketAuth != nil {
-					var err error
-					did, err = cfg.TicketAuth.ValidateTicket(r.Context(), ticket)
-					if err != nil {
-						handlers.JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid or expired ticket")
-						return
-					}
+				if cfg.TicketAuth == nil {
+					handlers.JSONError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "WebSocket authentication not configured")
+					return
+				}
+				did, err := cfg.TicketAuth.ValidateTicket(r.Context(), ticket)
+				if err != nil {
+					handlers.JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid or expired ticket")
+					return
 				}
 
 				conn, err := ws.Accept(w, r, &ws.AcceptOptions{

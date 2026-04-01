@@ -83,15 +83,20 @@ func NewAnomalyDetector(rdb *redis.Client) *AnomalyDetector {
 }
 
 // Check evaluates an onboarding request for suspicious patterns.
+// Returns nil if the request is allowed, or an error describing the anomaly.
+// Redis errors are treated as non-blocking — the request proceeds.
 func (ad *AnomalyDetector) Check(ctx context.Context, did, ip string) error {
-	// Check for rapid session creation from the same DID.
 	recentKey := anomalySessionPrefix + did
 	count, err := ad.redis.Incr(ctx, recentKey).Result()
 	if err != nil {
-		return nil // Don't block on anomaly detection errors.
+		// Don't block the request on Redis errors; anomaly detection is best-effort.
+		return nil
 	}
 	if count == 1 {
-		ad.redis.Expire(ctx, recentKey, time.Minute)
+		if err := ad.redis.Expire(ctx, recentKey, time.Minute).Err(); err != nil {
+			// Non-critical — the key will remain without TTL but won't cause harm.
+			_ = err
+		}
 	}
 
 	if count > maxSessionsPerWindow {

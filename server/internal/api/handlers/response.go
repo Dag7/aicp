@@ -59,10 +59,11 @@ func JSONErrorDetail(w http.ResponseWriter, status int, code, message, detail st
 }
 
 // ProtocolErrorResponse maps a protocol error to an HTTP response.
+// For unrecognized errors, a generic message is returned to avoid leaking internals.
 func ProtocolErrorResponse(w http.ResponseWriter, err error) {
 	pe, ok := aicp.IsProtocolError(err)
 	if !ok {
-		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "an internal error occurred")
 		return
 	}
 	JSONErrorDetail(w, pe.StatusCode, pe.Code, pe.Message, pe.Detail)

@@ -28,8 +28,11 @@ func NewSessionManager(rdb *redis.Client, sessionTTL time.Duration) *SessionMana
 
 // Create starts a new onboarding session.
 func (sm *SessionManager) Create(ctx context.Context, agentDID, serviceDID string) (*aicp.OnboardingState, error) {
+	if agentDID == "" || serviceDID == "" {
+		return nil, fmt.Errorf("agentDID and serviceDID are required")
+	}
 	now := time.Now().UTC()
-	sessionID := fmt.Sprintf("sess_%s", crypto.SHA256Hex([]byte(agentDID+serviceDID+now.String()))[:16])
+	sessionID := fmt.Sprintf("sess_%s", crypto.SHA256Hex([]byte(agentDID + serviceDID + now.String()))[:16])
 
 	state := &aicp.OnboardingState{
 		SessionID:  sessionID,

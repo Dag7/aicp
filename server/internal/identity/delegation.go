@@ -27,13 +27,13 @@ func NewDelegationVerifier(backend ledger.LedgerBackend, didMgr *DIDManager, cre
 
 // DelegationChain is the result of verifying an agent's delegation.
 type DelegationChain struct {
-	AgentDID      string                    `json:"agent_did"`
-	PrincipalDID  string                    `json:"principal_did"`
-	Chain         []string                  `json:"chain"`
-	Valid         bool                      `json:"valid"`
-	Capabilities  []string                  `json:"capabilities,omitempty"`
-	Credential    *aicp.VerifiableCredential `json:"credential,omitempty"`
-	Errors        []string                  `json:"errors,omitempty"`
+	AgentDID     string                     `json:"agent_did"`
+	PrincipalDID string                     `json:"principal_did"`
+	Chain        []string                   `json:"chain"`
+	Valid        bool                       `json:"valid"`
+	Capabilities []string                   `json:"capabilities,omitempty"`
+	Credential   *aicp.VerifiableCredential `json:"credential,omitempty"`
+	Errors       []string                   `json:"errors,omitempty"`
 }
 
 // VerifyDelegation verifies that an agent DID has a valid delegation chain
@@ -44,20 +44,11 @@ func (dv *DelegationVerifier) VerifyDelegation(ctx context.Context, agentDID str
 		Valid:    true,
 	}
 
-	// Resolve the agent's DID document.
-	agentResult, err := dv.didMgr.Resolve(ctx, agentDID)
+	agentResult, err := dv.resolveAndValidate(ctx, agentDID, "agent")
 	if err != nil {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf("cannot resolve agent DID: %v", err))
-		return result, nil
-	}
-	if agentResult.DocumentMetadata.Deactivated {
-		result.Valid = false
-		result.Errors = append(result.Errors, "agent DID is deactivated")
-		return result, nil
+		return invalidChain(result, err.Error()), nil
 	}
 
-	// Extract the principal DID from the agent's document.
 	principalDID := agentResult.Document.AICPPrincipal
 	if principalDID == "" {
 		principalDID = agentResult.Document.Controller
@@ -65,65 +56,77 @@ func (dv *DelegationVerifier) VerifyDelegation(ctx context.Context, agentDID str
 	result.PrincipalDID = principalDID
 	result.Chain = []string{agentDID, principalDID}
 
-	// Verify the principal exists and is active.
-	principalResult, err := dv.didMgr.Resolve(ctx, principalDID)
-	if err != nil {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf("cannot resolve principal DID: %v", err))
-		return result, nil
-	}
-	if principalResult.DocumentMetadata.Deactivated {
-		result.Valid = false
-		result.Errors = append(result.Errors, "principal DID is deactivated")
-		return result, nil
+	if _, err := dv.resolveAndValidate(ctx, principalDID, "principal"); err != nil {
+		return invalidChain(result, err.Error()), nil
 	}
 
-	// Verify the agent is controlled by the principal.
 	if agentResult.Document.Controller != principalDID {
-		result.Valid = false
-		result.Errors = append(result.Errors, "agent is not controlled by the claimed principal")
-		return result, nil
+		return invalidChain(result, "agent is not controlled by the claimed principal"), nil
 	}
 
-	// If there's a delegation credential reference, verify it.
 	if agentResult.Document.AICPDelegationCred != "" {
-		cred, err := dv.backend.GetCredential(ctx, agentResult.Document.AICPDelegationCred)
-		if err != nil {
-			result.Valid = false
-			result.Errors = append(result.Errors, fmt.Sprintf("cannot retrieve delegation credential: %v", err))
-			return result, nil
-		}
-
-		// Verify the credential.
-		verResult, err := dv.credMgr.VerifyCredential(ctx, *cred)
-		if err != nil {
-			result.Valid = false
-			result.Errors = append(result.Errors, fmt.Sprintf("credential verification error: %v", err))
-			return result, nil
-		}
-		if !verResult.Valid {
-			result.Valid = false
-			result.Errors = append(result.Errors, verResult.Errors...)
-			return result, nil
-		}
-
-		// Store the credential for fine-grained capability inspection.
-		result.Credential = cred
-
-		// Extract capabilities from the delegation credential.
-		var subject aicp.AgentDelegationSubject
-		if err := json.Unmarshal(cred.CredentialSubject, &subject); err == nil {
-			result.Capabilities = subject.DelegatedCapabilities
+		if err := dv.verifyDelegationCredential(ctx, agentDID, agentResult.Document.AICPDelegationCred, result); err != nil {
+			return invalidChain(result, err.Error()), nil
 		}
 	}
 
 	return result, nil
 }
 
+// resolveAndValidate resolves a DID and checks it is active.
+func (dv *DelegationVerifier) resolveAndValidate(ctx context.Context, did, role string) (*aicp.DIDResolutionResult, error) {
+	res, err := dv.didMgr.Resolve(ctx, did)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve %s DID: %w", role, err)
+	}
+	if res.Document == nil || res.DocumentMetadata == nil {
+		return nil, fmt.Errorf("incomplete resolution result for %s DID", role)
+	}
+	if res.DocumentMetadata.Deactivated {
+		return nil, fmt.Errorf("%s DID is deactivated", role)
+	}
+	return res, nil
+}
+
+// verifyDelegationCredential retrieves, validates, and extracts capabilities from a delegation credential.
+func (dv *DelegationVerifier) verifyDelegationCredential(ctx context.Context, agentDID, credID string, result *DelegationChain) error {
+	cred, err := dv.backend.GetCredential(ctx, credID)
+	if err != nil {
+		return fmt.Errorf("cannot retrieve delegation credential: %w", err)
+	}
+
+	verResult, err := dv.credMgr.VerifyCredential(ctx, *cred)
+	if err != nil {
+		return fmt.Errorf("credential verification error: %w", err)
+	}
+	if !verResult.Valid {
+		return fmt.Errorf("credential invalid: %v", verResult.Errors)
+	}
+
+	// Verify the credential's subject matches the agent being checked.
+	var subject aicp.AgentDelegationSubject
+	if err := json.Unmarshal(cred.CredentialSubject, &subject); err != nil {
+		return fmt.Errorf("cannot parse delegation subject: %w", err)
+	}
+	if subject.ID != "" && subject.ID != agentDID {
+		return fmt.Errorf("credential subject %s does not match agent %s", subject.ID, agentDID)
+	}
+
+	result.Credential = cred
+	result.Capabilities = subject.DelegatedCapabilities
+	return nil
+}
+
+// invalidChain marks a delegation chain as invalid with the given error message.
+func invalidChain(chain *DelegationChain, msg string) *DelegationChain {
+	chain.Valid = false
+	chain.Errors = append(chain.Errors, msg)
+	return chain
+}
+
 // VerifySpendingAuthorization verifies that an agent has valid spending authorization
 // and returns the spending limits.
 func (dv *DelegationVerifier) VerifySpendingAuthorization(ctx context.Context, agentDID string) (*aicp.SpendingAuthorizationSubject, error) {
-	// First verify delegation.
 	chain, err := dv.VerifyDelegation(ctx, agentDID)
 	if err != nil {
 		return nil, fmt.Errorf("verifying delegation: %w", err)
@@ -132,33 +135,40 @@ func (dv *DelegationVerifier) VerifySpendingAuthorization(ctx context.Context, a
 		return nil, fmt.Errorf("invalid delegation chain: %v", chain.Errors)
 	}
 
-	// Resolve agent to find spending credential reference.
 	agentResult, err := dv.didMgr.Resolve(ctx, agentDID)
 	if err != nil {
 		return nil, fmt.Errorf("resolving agent DID: %w", err)
 	}
 
-	// Look for spending authorization in service endpoints.
 	for _, svc := range agentResult.Document.Service {
-		if svc.Type == "AICPSpendingAuthorization" {
-			cred, err := dv.backend.GetCredential(ctx, svc.ServiceEndpoint)
-			if err != nil {
-				continue
-			}
-
-			verResult, err := dv.credMgr.VerifyCredential(ctx, *cred)
-			if err != nil || !verResult.Valid {
-				continue
-			}
-
-			var subject aicp.SpendingAuthorizationSubject
-			if err := json.Unmarshal(cred.CredentialSubject, &subject); err != nil {
-				continue
-			}
-
-			return &subject, nil
+		if svc.Type != "AICPSpendingAuthorization" {
+			continue
 		}
+		subject, err := dv.verifySpendingCredential(ctx, svc.ServiceEndpoint)
+		if err != nil {
+			continue
+		}
+		return subject, nil
 	}
 
 	return nil, fmt.Errorf("no valid spending authorization found for agent %s", agentDID)
+}
+
+// verifySpendingCredential retrieves and validates a spending credential.
+func (dv *DelegationVerifier) verifySpendingCredential(ctx context.Context, credID string) (*aicp.SpendingAuthorizationSubject, error) {
+	cred, err := dv.backend.GetCredential(ctx, credID)
+	if err != nil {
+		return nil, err
+	}
+
+	verResult, err := dv.credMgr.VerifyCredential(ctx, *cred)
+	if err != nil || !verResult.Valid {
+		return nil, fmt.Errorf("credential invalid")
+	}
+
+	var subject aicp.SpendingAuthorizationSubject
+	if err := json.Unmarshal(cred.CredentialSubject, &subject); err != nil {
+		return nil, err
+	}
+	return &subject, nil
 }

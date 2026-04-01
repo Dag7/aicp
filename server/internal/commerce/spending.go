@@ -127,6 +127,44 @@ func (st *SpendingTracker) RecordSpending(ctx context.Context, did string, amoun
 	return st.backend.RecordSpending(ctx, did, amount)
 }
 
+// AtomicCheckAndRecordSpending atomically verifies that the given amount does
+// not exceed spending limits and records it in a single operation. This
+// eliminates the TOCTOU race between separate CheckLimits/RecordSpending calls
+// where concurrent requests could both pass the check before either records.
+// Returns true if the spending was within limits and recorded.
+func (st *SpendingTracker) AtomicCheckAndRecordSpending(ctx context.Context, did string, amount aicp.MoneyAmount) (bool, error) {
+	return st.backend.CheckAndRecordSpending(
+		ctx, did, amount,
+		aicp.DefaultDailySpendingLimit,
+		aicp.DefaultMonthlySpendingLimit,
+	)
+}
+
+// AtomicCheckAndRecordCustomSpending atomically verifies that the given amount
+// does not exceed custom per-agent spending limits and records it in a single
+// operation. The per-transaction limit is checked locally since it does not
+// require coordination with the backend.
+func (st *SpendingTracker) AtomicCheckAndRecordCustomSpending(ctx context.Context, did string, amount aicp.MoneyAmount, limits aicp.SpendingLimits) (bool, error) {
+	// Per-transaction limit is stateless — check it before hitting the backend.
+	txAmount, ok := new(big.Float).SetString(amount.Value)
+	if !ok {
+		return false, fmt.Errorf("invalid amount: %s", amount.Value)
+	}
+	perTxLimit, ok := new(big.Float).SetString(limits.PerTransaction.Value)
+	if !ok {
+		return false, fmt.Errorf("invalid per-transaction limit: %s", limits.PerTransaction.Value)
+	}
+	if txAmount.Cmp(perTxLimit) > 0 {
+		return false, nil
+	}
+
+	return st.backend.CheckAndRecordSpending(
+		ctx, did, amount,
+		limits.Daily.Value,
+		limits.Monthly.Value,
+	)
+}
+
 // GetDailySummary returns the current daily spending total.
 func (st *SpendingTracker) GetDailySummary(ctx context.Context, did, currency string) (string, error) {
 	return st.backend.GetDailySpending(ctx, did, currency)

@@ -10,7 +10,7 @@ import (
 
 // StripeAdapter implements PaymentAdapter for Stripe.
 type StripeAdapter struct {
-	apiKey    string
+	apiKey        string
 	webhookSecret string
 	initialized   bool
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
 
-
 // BuildPrincipalDocument creates a DID Document for a principal identity.
 func BuildPrincipalDocument(did string, publicKey ed25519.PublicKey) aicp.DIDDocument {
 	now := time.Now().UTC()
@@ -27,12 +26,12 @@ func BuildPrincipalDocument(did string, publicKey ed25519.PublicKey) aicp.DIDDoc
 				PublicKeyMultibase: crypto.PublicKeyMultibase(publicKey),
 			},
 		},
-		Authentication:  []string{keyID},
-		AssertionMethod: []string{keyID},
+		Authentication:       []string{keyID},
+		AssertionMethod:      []string{keyID},
 		CapabilityDelegation: []string{keyID},
-		Created:    now,
-		Updated:    now,
-		VersionID:  1,
+		Created:              now,
+		Updated:              now,
+		VersionID:            1,
 	}
 }
 
@@ -55,7 +54,7 @@ func BuildAgentDocument(agentDID, principalDID string, agentPublicKey ed25519.Pu
 		},
 		Authentication:  []string{keyID},
 		AssertionMethod: []string{keyID},
-		AICPPrincipal:  principalDID,
+		AICPPrincipal:   principalDID,
 		Created:         now,
 		Updated:         now,
 		VersionID:       1,

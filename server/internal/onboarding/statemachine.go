@@ -18,10 +18,10 @@ type Transition struct {
 
 // validTransitions defines the allowed state transitions.
 var validTransitions = map[Transition]bool{
-	{aicp.PhaseInitiated, aicp.PhaseIdentityPresented}:                true,
-	{aicp.PhaseIdentityPresented, aicp.PhaseCapabilitiesNegotiated}:   true,
-	{aicp.PhaseCapabilitiesNegotiated, aicp.PhasePaymentAuthorized}:   true,
-	{aicp.PhasePaymentAuthorized, aicp.PhaseProvisioned}:              true,
+	{aicp.PhaseInitiated, aicp.PhaseIdentityPresented}:              true,
+	{aicp.PhaseIdentityPresented, aicp.PhaseCapabilitiesNegotiated}: true,
+	{aicp.PhaseCapabilitiesNegotiated, aicp.PhasePaymentAuthorized}: true,
+	{aicp.PhasePaymentAuthorized, aicp.PhaseProvisioned}:            true,
 	// Any phase can transition to failed.
 	{aicp.PhaseInitiated, aicp.PhaseFailed}:              true,
 	{aicp.PhaseIdentityPresented, aicp.PhaseFailed}:      true,
@@ -31,9 +31,9 @@ var validTransitions = map[Transition]bool{
 
 // Flow manages a single onboarding session's state transitions with guards.
 type Flow struct {
-	state       *aicp.OnboardingState
-	sessionTTL  time.Duration
-	guards      []Guard
+	state      *aicp.OnboardingState
+	sessionTTL time.Duration
+	guards     []Guard
 }
 
 // Guard is a function that validates a transition before allowing it.

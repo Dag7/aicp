@@ -324,7 +324,7 @@ func TestAICPToolRegistry_OnboardInitiate_Integration(t *testing.T) {
 	resp := sendRequest(t, s, "tools/call", 13, map[string]any{
 		"name": "aicp_onboard_initiate",
 		"arguments": map[string]any{
-			"agent_did":               "did:aicp:agent1",
+			"agent_did":              "did:aicp:agent1",
 			"requested_capabilities": []string{"payment:read"},
 		},
 	})

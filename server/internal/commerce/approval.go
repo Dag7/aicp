@@ -31,18 +31,18 @@ const (
 
 // PendingApproval represents a payment that requires principal approval.
 type PendingApproval struct {
-	ApprovalID   string         `json:"approval_id"`
-	AgentDID     string         `json:"agent_did"`
-	PrincipalDID string         `json:"principal_did"`
+	ApprovalID   string           `json:"approval_id"`
+	AgentDID     string           `json:"agent_did"`
+	PrincipalDID string           `json:"principal_did"`
 	Amount       aicp.MoneyAmount `json:"amount"`
-	Purpose      string         `json:"purpose"`
-	TokenJTI     string         `json:"token_jti"`
-	Status       ApprovalStatus `json:"status"`
-	DenyReason   string         `json:"deny_reason,omitempty"`
-	CreatedAt    time.Time      `json:"created_at"`
-	ExpiresAt    time.Time      `json:"expires_at"`
-	DecidedAt    *time.Time     `json:"decided_at,omitempty"`
-	DecidedBy    string         `json:"decided_by,omitempty"`
+	Purpose      string           `json:"purpose"`
+	TokenJTI     string           `json:"token_jti"`
+	Status       ApprovalStatus   `json:"status"`
+	DenyReason   string           `json:"deny_reason,omitempty"`
+	CreatedAt    time.Time        `json:"created_at"`
+	ExpiresAt    time.Time        `json:"expires_at"`
+	DecidedAt    *time.Time       `json:"decided_at,omitempty"`
+	DecidedBy    string           `json:"decided_by,omitempty"`
 }
 
 // ApprovalService manages the human approval workflow for high-value transactions.
@@ -109,7 +109,7 @@ func (as *ApprovalService) CheckApprovalRequired(ctx context.Context, agentDID s
 func (as *ApprovalService) RequestApproval(ctx context.Context, req PendingApproval) (*PendingApproval, error) {
 	now := time.Now().UTC()
 
-	req.ApprovalID = fmt.Sprintf("appr_%s", crypto.SHA256Hex([]byte(req.AgentDID+req.TokenJTI+now.String()))[:16])
+	req.ApprovalID = fmt.Sprintf("appr_%s", crypto.SHA256Hex([]byte(req.AgentDID + req.TokenJTI + now.String()))[:16])
 	req.Status = ApprovalPending
 	req.CreatedAt = now
 	req.ExpiresAt = now.Add(as.ttl)
@@ -152,7 +152,7 @@ func (as *ApprovalService) RequestApproval(ctx context.Context, req PendingAppro
 func (as *ApprovalService) Approve(ctx context.Context, approvalID, principalDID string) error {
 	approval, err := as.GetApproval(ctx, approvalID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting approval: %w", err)
 	}
 
 	if approval.PrincipalDID != principalDID {
@@ -163,7 +163,9 @@ func (as *ApprovalService) Approve(ctx context.Context, approvalID, principalDID
 	}
 	if time.Now().After(approval.ExpiresAt) {
 		approval.Status = ApprovalExpired
-		_ = as.save(ctx, approval)
+		if err := as.save(ctx, approval); err != nil {
+			as.logger.Error("failed to mark approval expired", "error", err, "approval_id", approvalID)
+		}
 		return aicp.ErrApprovalExpired
 	}
 
@@ -192,7 +194,7 @@ func (as *ApprovalService) Approve(ctx context.Context, approvalID, principalDID
 func (as *ApprovalService) Deny(ctx context.Context, approvalID, principalDID, reason string) error {
 	approval, err := as.GetApproval(ctx, approvalID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting approval: %w", err)
 	}
 
 	if approval.PrincipalDID != principalDID {
@@ -240,10 +242,12 @@ func (as *ApprovalService) GetApproval(ctx context.Context, approvalID string) (
 		return nil, fmt.Errorf("unmarshaling approval: %w", err)
 	}
 
-	// Check if expired but still in Redis.
+	// Mark expired if still pending past the deadline.
 	if approval.Status == ApprovalPending && time.Now().After(approval.ExpiresAt) {
 		approval.Status = ApprovalExpired
-		_ = as.save(ctx, &approval)
+		if err := as.save(ctx, &approval); err != nil {
+			as.logger.Error("failed to mark approval expired", "error", err, "approval_id", approvalID)
+		}
 		as.removePrincipalEntry(ctx, approval.PrincipalDID, approvalID)
 	}
 

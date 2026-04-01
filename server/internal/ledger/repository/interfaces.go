@@ -89,4 +89,5 @@ type SpendingRepository interface {
 	GetDailySpending(ctx context.Context, did string, currency string) (string, error)
 	GetMonthlySpending(ctx context.Context, did string, currency string) (string, error)
 	RecordSpending(ctx context.Context, did string, amount aicp.MoneyAmount) error
+	CheckAndRecordSpending(ctx context.Context, did string, amount aicp.MoneyAmount, dailyLimit, monthlyLimit string) (bool, error)
 }

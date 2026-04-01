@@ -136,4 +136,13 @@ type LedgerBackend interface {
 
 	// RecordSpending records a spending event for limit tracking.
 	RecordSpending(ctx context.Context, did string, amount aicp.MoneyAmount) error
+
+	// CheckAndRecordSpending atomically verifies that the given amount does not
+	// exceed the daily or monthly spending limit and, if within limits, records
+	// the spending in a single transaction. This eliminates the race condition
+	// between separate CheckLimits and RecordSpending calls where two concurrent
+	// requests could both pass the check before either records. Returns true if
+	// the spending was within limits and recorded; false if the limit would be
+	// exceeded (no record is written in that case).
+	CheckAndRecordSpending(ctx context.Context, did string, amount aicp.MoneyAmount, dailyLimit, monthlyLimit string) (bool, error)
 }

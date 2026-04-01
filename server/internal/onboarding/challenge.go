@@ -3,6 +3,7 @@ package onboarding
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -33,6 +34,9 @@ func NewChallengeService(rdb *redis.Client, domain string) *ChallengeService {
 
 // Issue creates a new DID-Auth challenge for the given session.
 func (cs *ChallengeService) Issue(ctx context.Context, sessionID string) (*aicp.DIDAuthChallenge, error) {
+	if sessionID == "" {
+		return nil, fmt.Errorf("sessionID is required")
+	}
 	challengeBytes := make([]byte, 32)
 	if _, err := rand.Read(challengeBytes); err != nil {
 		return nil, fmt.Errorf("generating challenge: %w", err)
@@ -64,6 +68,9 @@ func (cs *ChallengeService) Issue(ctx context.Context, sessionID string) (*aicp.
 
 // Verify checks that the provided challenge value matches the stored one.
 func (cs *ChallengeService) Verify(ctx context.Context, sessionID, challengeValue string) error {
+	if sessionID == "" || challengeValue == "" {
+		return fmt.Errorf("sessionID and challengeValue are required")
+	}
 	key := challengePrefix + sessionID
 	stored, err := cs.redis.Get(ctx, key).Result()
 	if err != nil {
@@ -73,11 +80,14 @@ func (cs *ChallengeService) Verify(ctx context.Context, sessionID, challengeValu
 		return fmt.Errorf("retrieving challenge: %w", err)
 	}
 
-	if stored != challengeValue {
+	if subtle.ConstantTimeCompare([]byte(stored), []byte(challengeValue)) != 1 {
 		return fmt.Errorf("challenge mismatch")
 	}
 
 	// Delete after successful verification (one-time use).
-	cs.redis.Del(ctx, key)
+	if err := cs.redis.Del(ctx, key).Err(); err != nil {
+		// Log but don't fail — the challenge TTL will expire it naturally.
+		_ = err
+	}
 	return nil
 }

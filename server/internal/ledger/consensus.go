@@ -14,10 +14,10 @@ import (
 // ConsensusEngine implements round-robin leader election with 2f+1 signature
 // collection for block finalization across a set of consortium validators.
 type ConsensusEngine struct {
-	backend    LedgerBackend
-	localDID   string
-	localKey   ed25519.PrivateKey
-	logger     *slog.Logger
+	backend  LedgerBackend
+	localDID string
+	localKey ed25519.PrivateKey
+	logger   *slog.Logger
 
 	mu         sync.RWMutex
 	validators []aicp.Validator

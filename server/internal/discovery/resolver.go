@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -86,11 +87,14 @@ func (r *Resolver) resolveFederated(ctx context.Context, serviceDID string) (*ai
 	return nil, aicp.ErrNotFound
 }
 
+// maxPeerResponseSize is the maximum response body size accepted from federation peers.
+const maxPeerResponseSize = 1 << 20 // 1 MiB
+
 // queryPeer queries a single federation peer for an ANS record.
 func (r *Resolver) queryPeer(ctx context.Context, peer FederationPeer, serviceDID string) (*aicp.ANSRecord, error) {
-	url := fmt.Sprintf("%s/aicp/v1/discover/%s", peer.Endpoint, serviceDID)
+	peerURL := fmt.Sprintf("%s/aicp/v1/discover/%s", peer.Endpoint, url.PathEscape(serviceDID))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, peerURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating peer request: %w", err)
 	}
@@ -112,7 +116,7 @@ func (r *Resolver) queryPeer(ctx context.Context, peer FederationPeer, serviceDI
 		Success bool           `json:"success"`
 		Data    aicp.ANSRecord `json:"data"`
 	}
-	if err := decodeJSONBody(resp.Body, &envelope); err != nil {
+	if err := decodeLimitedJSONBody(resp.Body, &envelope); err != nil {
 		return nil, fmt.Errorf("decoding peer response: %w", err)
 	}
 	if !envelope.Success {
@@ -164,9 +168,9 @@ func (r *Resolver) FederatedSearch(ctx context.Context, capability string, limit
 
 // searchPeer queries a single peer for ANS search results.
 func (r *Resolver) searchPeer(ctx context.Context, peer FederationPeer, capability string, limit int) ([]aicp.ANSRecord, error) {
-	url := fmt.Sprintf("%s/aicp/v1/discover/search?capability=%s&limit=%d", peer.Endpoint, url.QueryEscape(capability), limit)
+	searchURL := fmt.Sprintf("%s/aicp/v1/discover/search?capability=%s&limit=%d", peer.Endpoint, url.QueryEscape(capability), limit)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +184,7 @@ func (r *Resolver) searchPeer(ctx context.Context, peer FederationPeer, capabili
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("peer returned %d", resp.StatusCode)
+		return nil, fmt.Errorf("peer %s returned %d", peer.Name, resp.StatusCode)
 	}
 
 	var envelope struct {
@@ -189,8 +193,8 @@ func (r *Resolver) searchPeer(ctx context.Context, peer FederationPeer, capabili
 			Items []aicp.ANSRecord `json:"items"`
 		} `json:"data"`
 	}
-	if err := decodeJSONBody(resp.Body, &envelope); err != nil {
-		return nil, err
+	if err := decodeLimitedJSONBody(resp.Body, &envelope); err != nil {
+		return nil, fmt.Errorf("decoding peer search response: %w", err)
 	}
 
 	return envelope.Data.Items, nil
@@ -202,10 +206,15 @@ func (r *Resolver) Peers() *PeerRegistry {
 }
 
 // ResolveDomain fetches the ANS record from /.well-known/aicp.json at the given domain.
+// The domain must be a valid hostname without path, query, or fragment components.
 func (r *Resolver) ResolveDomain(ctx context.Context, domain string) (*aicp.ANSRecord, error) {
-	url := fmt.Sprintf("https://%s/.well-known/aicp.json", domain)
+	if err := validateDomain(domain); err != nil {
+		return nil, fmt.Errorf("invalid domain: %w", err)
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	wellKnownURL := fmt.Sprintf("https://%s/.well-known/aicp.json", domain)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnownURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -222,11 +231,26 @@ func (r *Resolver) ResolveDomain(ctx context.Context, domain string) (*aicp.ANSR
 	}
 
 	var record aicp.ANSRecord
-	if err := decodeJSONBody(resp.Body, &record); err != nil {
+	if err := decodeLimitedJSONBody(resp.Body, &record); err != nil {
 		return nil, fmt.Errorf("decoding ANS record from %s: %w", domain, err)
 	}
 
 	return &record, nil
+}
+
+// validateDomain checks that a domain string is a valid hostname
+// without path traversal, query, or fragment components.
+func validateDomain(domain string) error {
+	if domain == "" {
+		return fmt.Errorf("domain is empty")
+	}
+	if strings.ContainsAny(domain, "/:@?#") {
+		return fmt.Errorf("domain contains invalid characters")
+	}
+	if strings.Contains(domain, "..") {
+		return fmt.Errorf("domain contains path traversal")
+	}
+	return nil
 }
 
 // ─── Federation Peer Registry ───────────────────────────────────────────────

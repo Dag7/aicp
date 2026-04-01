@@ -66,9 +66,6 @@ func (pe *PaymentExecutor) Execute(ctx context.Context, token string, issuerPubK
 	if err != nil {
 		return nil, err
 	}
-	if err := pe.enforceSpendingLimits(ctx, claims); err != nil {
-		return nil, err
-	}
 
 	// Check if the transaction requires principal approval.
 	resp, err := pe.checkApproval(ctx, claims)
@@ -79,14 +76,28 @@ func (pe *PaymentExecutor) Execute(ctx context.Context, token string, issuerPubK
 		return resp, nil
 	}
 
+	// Atomically mark the token as used — this is the double-spend gate.
+	// If a concurrent request already claimed this JTI, MarkUsed returns
+	// ErrTokenAlreadyUsed and the payment is rejected.
 	if err := pe.validator.MarkUsed(ctx, claims.JTI); err != nil {
+		if errors.Is(err, aicp.ErrTokenAlreadyUsed) {
+			return nil, aicp.ErrPaymentTokenReplay
+		}
 		return nil, fmt.Errorf("marking token used: %w", err)
 	}
+
+	// Atomically check spending limits AND record the spending in one
+	// operation. This eliminates the TOCTOU race condition where two
+	// concurrent requests could both pass a separate CheckLimits before
+	// either calls RecordSpending — resulting in overspending.
+	if err := pe.atomicEnforceAndRecordSpending(ctx, claims); err != nil {
+		return nil, err
+	}
+
 	intent, capture, err := pe.createAndCapturePayment(ctx, claims)
 	if err != nil {
 		return nil, err
 	}
-	pe.recordSpending(ctx, claims)
 	receipt, err := pe.generateAndStoreReceipt(ctx, claims, intent.IntentID, capture.Status)
 	if err != nil {
 		return nil, err
@@ -126,7 +137,7 @@ func (pe *PaymentExecutor) checkApproval(ctx context.Context, claims *aicp.Payme
 	principalDID := claims.PaymentDetails.PrincipalDID
 	if principalDID == "" && pe.delegation != nil {
 		chain, err := pe.delegation.VerifyDelegation(ctx, claims.Subject)
-		if err == nil && chain.Valid {
+		if err == nil && chain != nil && chain.Valid {
 			principalDID = chain.PrincipalDID
 		}
 	}
@@ -171,10 +182,12 @@ func (pe *PaymentExecutor) validateToken(ctx context.Context, token, issuerPubKe
 	return validation.Claims, nil
 }
 
-func (pe *PaymentExecutor) enforceSpendingLimits(ctx context.Context, claims *aicp.PaymentTokenClaims) error {
-	allowed, err := pe.spending.CheckLimits(ctx, claims.Subject, claims.PaymentDetails.Amount)
+// atomicEnforceAndRecordSpending checks spending limits and records the
+// spending in a single atomic backend call, preventing the TOCTOU race.
+func (pe *PaymentExecutor) atomicEnforceAndRecordSpending(ctx context.Context, claims *aicp.PaymentTokenClaims) error {
+	allowed, err := pe.spending.AtomicCheckAndRecordSpending(ctx, claims.Subject, claims.PaymentDetails.Amount)
 	if err != nil {
-		return fmt.Errorf("checking spending limits: %w", err)
+		return fmt.Errorf("checking and recording spending: %w", err)
 	}
 	if !allowed {
 		return aicp.ErrSpendingLimitExceeded
@@ -201,8 +214,8 @@ func (pe *PaymentExecutor) createAndCapturePayment(ctx context.Context, claims *
 	}
 	intent, err := pa.CreatePaymentIntent(ctx, adapter.CreateIntentParams{
 		Amount: claims.PaymentDetails.Amount, PayerDID: claims.Subject,
-		PayeeDID: claims.Audience,
-		Description: fmt.Sprintf("AICP payment: %s", claims.PaymentDetails.Purpose),
+		PayeeDID:       claims.Audience,
+		Description:    fmt.Sprintf("AICP payment: %s", claims.PaymentDetails.Purpose),
 		IdempotencyKey: claims.PaymentDetails.IdempotencyKey,
 	})
 	if err != nil {
@@ -213,12 +226,6 @@ func (pe *PaymentExecutor) createAndCapturePayment(ctx context.Context, claims *
 		return nil, nil, fmt.Errorf("capturing payment: %w", err)
 	}
 	return intent, capture, nil
-}
-
-func (pe *PaymentExecutor) recordSpending(ctx context.Context, claims *aicp.PaymentTokenClaims) {
-	if err := pe.spending.RecordSpending(ctx, claims.Subject, claims.PaymentDetails.Amount); err != nil {
-		pe.logger.Error("failed to record spending", "error", err, "did", claims.Subject)
-	}
 }
 
 func (pe *PaymentExecutor) generateAndStoreReceipt(ctx context.Context, claims *aicp.PaymentTokenClaims, paymentID, status string) (*aicp.SignedPaymentReceipt, error) {
@@ -267,7 +274,7 @@ func NewReceiptGenerator() *ReceiptGenerator {
 
 // Generate creates a signed payment receipt from validated claims.
 func (rg *ReceiptGenerator) Generate(ctx context.Context, claims *aicp.PaymentTokenClaims, paymentID, status string) (*aicp.SignedPaymentReceipt, error) {
-	receiptID := fmt.Sprintf("rcpt_%s", crypto.SHA256Hex([]byte(claims.JTI+paymentID))[:16])
+	receiptID := fmt.Sprintf("rcpt_%s", crypto.SHA256Hex([]byte(claims.JTI + paymentID))[:16])
 
 	hashInput := fmt.Sprintf("%s:%s:%s:%s:%s:%s",
 		receiptID, claims.JTI, claims.Subject, claims.Audience,

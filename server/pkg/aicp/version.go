@@ -29,23 +29,23 @@ const (
 	StatusRefunded        = "refunded"
 	StatusSucceeded       = "succeeded"
 	StatusPending         = "pending"
-	StatusCreated          = "CREATED"
-	StatusCompleted        = "COMPLETED"
-	StatusPendingApproval  = "pending_approval"
+	StatusCreated         = "CREATED"
+	StatusCompleted       = "COMPLETED"
+	StatusPendingApproval = "pending_approval"
 )
 
 // Identity constants.
 const (
-	ContextDIDCore           = "https://www.w3.org/ns/did/v1"
-	ContextAICP              = "https://aicp-protocol.org/ns/v1"
-	ContextCredentials       = "https://www.w3.org/2018/credentials/v1"
-	VMTypeEd25519            = "Ed25519VerificationKey2020"
-	ProofTypeEd25519Sig2020  = "Ed25519Signature2020"
-	ProofPurposeAssertion    = "assertionMethod"
-	PrimaryKeyFragment       = "#key-1"
-	CredentialIDPrefix       = "urn:aicp:credential:"
-	RevocationIDPrefix       = "urn:aicp:revocation:"
-	ChallengeTypeDIDAuth     = "DID-Auth"
+	ContextDIDCore          = "https://www.w3.org/ns/did/v1"
+	ContextAICP             = "https://aicp-protocol.org/ns/v1"
+	ContextCredentials      = "https://www.w3.org/2018/credentials/v1"
+	VMTypeEd25519           = "Ed25519VerificationKey2020"
+	ProofTypeEd25519Sig2020 = "Ed25519Signature2020"
+	ProofPurposeAssertion   = "assertionMethod"
+	PrimaryKeyFragment      = "#key-1"
+	CredentialIDPrefix      = "urn:aicp:credential:"
+	RevocationIDPrefix      = "urn:aicp:revocation:"
+	ChallengeTypeDIDAuth    = "DID-Auth"
 )
 
 // Pagination defaults.

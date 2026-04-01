@@ -29,7 +29,7 @@ func NewRevocationManager(backend ledger.LedgerBackend) *RevocationManager {
 
 // CreateList creates a new revocation list for an issuer.
 func (rm *RevocationManager) CreateList(ctx context.Context, issuerDID string) (*aicp.RevocationList, error) {
-	listID := aicp.RevocationIDPrefix + crypto.SHA256Hex([]byte(issuerDID+":revocation-list"))[:16]
+	listID := aicp.RevocationIDPrefix + crypto.SHA256Hex([]byte(issuerDID + ":revocation-list"))[:16]
 
 	// Create an empty bitstring (all zeros).
 	bitstring := make([]byte, defaultListCapacity/8)

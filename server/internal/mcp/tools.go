@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -22,7 +23,7 @@ type AICPToolRegistry struct {
 // to the AICP server at the given URL.
 func NewAICPToolRegistry(serverURL string) *AICPToolRegistry {
 	return &AICPToolRegistry{
-		serverURL: serverURL,
+		serverURL: strings.TrimRight(serverURL, "/"),
 		client:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -35,6 +36,9 @@ func (r *AICPToolRegistry) RegisterAll(s *Server) {
 	r.registerCommerceTools(s)
 	r.registerVerifyTools(s)
 }
+
+// maxInputLen is the maximum length for user-supplied string parameters.
+const maxInputLen = 512
 
 // ─── Identity Tools ─────────────────────────────────────────────────────────
 
@@ -84,16 +88,11 @@ func (r *AICPToolRegistry) handleDIDCreate(ctx context.Context, _ json.RawMessag
 }
 
 func (r *AICPToolRegistry) handleDIDResolve(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
-	var args struct {
-		DID string `json:"did"`
+	did, err := requireStringParam(params, "did")
+	if err != nil {
+		return textError("%v", err), nil
 	}
-	if err := json.Unmarshal(params, &args); err != nil {
-		return textError("invalid parameters: %v", err), nil
-	}
-	if args.DID == "" {
-		return textError("did is required"), nil
-	}
-	return r.get(ctx, "/aicp/v1/did/"+args.DID)
+	return r.get(ctx, "/aicp/v1/did/"+url.PathEscape(did))
 }
 
 func (r *AICPToolRegistry) handleDIDCreateAgent(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
@@ -164,6 +163,9 @@ func (r *AICPToolRegistry) handleDiscoverSearch(ctx context.Context, params json
 	if args.Query == "" {
 		return textError("query is required"), nil
 	}
+	if len(args.Query) > maxInputLen {
+		return textError("query exceeds maximum length"), nil
+	}
 	path := fmt.Sprintf("/aicp/v1/discover/search?capability=%s", url.QueryEscape(args.Query))
 	if args.Limit > 0 {
 		path += fmt.Sprintf("&limit=%d", args.Limit)
@@ -172,16 +174,11 @@ func (r *AICPToolRegistry) handleDiscoverSearch(ctx context.Context, params json
 }
 
 func (r *AICPToolRegistry) handleDiscoverGet(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
-	var args struct {
-		DID string `json:"did"`
+	did, err := requireStringParam(params, "did")
+	if err != nil {
+		return textError("%v", err), nil
 	}
-	if err := json.Unmarshal(params, &args); err != nil {
-		return textError("invalid parameters: %v", err), nil
-	}
-	if args.DID == "" {
-		return textError("did is required"), nil
-	}
-	return r.get(ctx, "/aicp/v1/discover/"+args.DID)
+	return r.get(ctx, "/aicp/v1/discover/"+url.PathEscape(did))
 }
 
 func (r *AICPToolRegistry) handleDiscoverRegister(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
@@ -281,43 +278,35 @@ func (r *AICPToolRegistry) handleOnboardInitiate(ctx context.Context, params jso
 }
 
 func (r *AICPToolRegistry) handleOnboardNegotiate(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
-	var args struct {
-		SessionID string `json:"session_id"`
+	sessionID, err := requireStringParam(params, "session_id")
+	if err != nil {
+		return textError("%v", err), nil
 	}
-	if err := json.Unmarshal(params, &args); err != nil {
-		return textError("invalid parameters: %v", err), nil
-	}
-	return r.post(ctx, "/aicp/v1/onboard/"+args.SessionID+"/negotiate", params)
+	return r.post(ctx, "/aicp/v1/onboard/"+url.PathEscape(sessionID)+"/negotiate", params)
 }
 
 func (r *AICPToolRegistry) handleOnboardAuthorize(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
-	var args struct {
-		SessionID string `json:"session_id"`
+	sessionID, err := requireStringParam(params, "session_id")
+	if err != nil {
+		return textError("%v", err), nil
 	}
-	if err := json.Unmarshal(params, &args); err != nil {
-		return textError("invalid parameters: %v", err), nil
-	}
-	return r.post(ctx, "/aicp/v1/onboard/"+args.SessionID+"/authorize", params)
+	return r.post(ctx, "/aicp/v1/onboard/"+url.PathEscape(sessionID)+"/authorize", params)
 }
 
 func (r *AICPToolRegistry) handleOnboardProvision(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
-	var args struct {
-		SessionID string `json:"session_id"`
+	sessionID, err := requireStringParam(params, "session_id")
+	if err != nil {
+		return textError("%v", err), nil
 	}
-	if err := json.Unmarshal(params, &args); err != nil {
-		return textError("invalid parameters: %v", err), nil
-	}
-	return r.post(ctx, "/aicp/v1/onboard/"+args.SessionID+"/provision", params)
+	return r.post(ctx, "/aicp/v1/onboard/"+url.PathEscape(sessionID)+"/provision", params)
 }
 
 func (r *AICPToolRegistry) handleOnboardStatus(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
-	var args struct {
-		SessionID string `json:"session_id"`
+	sessionID, err := requireStringParam(params, "session_id")
+	if err != nil {
+		return textError("%v", err), nil
 	}
-	if err := json.Unmarshal(params, &args); err != nil {
-		return textError("invalid parameters: %v", err), nil
-	}
-	return r.get(ctx, "/aicp/v1/onboard/"+args.SessionID)
+	return r.get(ctx, "/aicp/v1/onboard/"+url.PathEscape(sessionID))
 }
 
 // ─── Commerce Tools ─────────────────────────────────────────────────────────
@@ -394,13 +383,11 @@ func (r *AICPToolRegistry) handlePaymentExecute(ctx context.Context, params json
 }
 
 func (r *AICPToolRegistry) handlePaymentStatus(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
-	var args struct {
-		ReceiptID string `json:"receipt_id"`
+	receiptID, err := requireStringParam(params, "receipt_id")
+	if err != nil {
+		return textError("%v", err), nil
 	}
-	if err := json.Unmarshal(params, &args); err != nil {
-		return textError("invalid parameters: %v", err), nil
-	}
-	return r.get(ctx, "/aicp/v1/payment/status/"+args.ReceiptID)
+	return r.get(ctx, "/aicp/v1/payment/status/"+url.PathEscape(receiptID))
 }
 
 // ─── Verify Tools ───────────────────────────────────────────────────────────
@@ -446,13 +433,11 @@ func (r *AICPToolRegistry) handleVerify(ctx context.Context, params json.RawMess
 }
 
 func (r *AICPToolRegistry) handleTrustScore(ctx context.Context, params json.RawMessage) (*ToolResult, error) {
-	var args struct {
-		DID string `json:"did"`
+	did, err := requireStringParam(params, "did")
+	if err != nil {
+		return textError("%v", err), nil
 	}
-	if err := json.Unmarshal(params, &args); err != nil {
-		return textError("invalid parameters: %v", err), nil
-	}
-	return r.get(ctx, "/aicp/v1/trust/"+args.DID)
+	return r.get(ctx, "/aicp/v1/trust/"+url.PathEscape(did))
 }
 
 // ─── HTTP Helpers ───────────────────────────────────────────────────────────
@@ -460,7 +445,7 @@ func (r *AICPToolRegistry) handleTrustScore(ctx context.Context, params json.Raw
 func (r *AICPToolRegistry) get(ctx context.Context, path string) (*ToolResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.serverURL+path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return textError("creating request: %v", err), nil
 	}
 	req.Header.Set("Accept", "application/json")
 	return r.doRequest(req)
@@ -473,7 +458,7 @@ func (r *AICPToolRegistry) post(ctx context.Context, path string, body json.RawM
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.serverURL+path, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return textError("creating request: %v", err), nil
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -505,7 +490,31 @@ func (r *AICPToolRegistry) doRequest(req *http.Request) (*ToolResult, error) {
 	}, nil
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Parameter Helpers ──────────────────────────────────────────────────────
+
+// requireStringParam extracts a required string field from JSON params
+// with validation for emptiness and length.
+func requireStringParam(params json.RawMessage, field string) (string, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(params, &raw); err != nil {
+		return "", fmt.Errorf("invalid parameters: %v", err)
+	}
+	val, ok := raw[field]
+	if !ok {
+		return "", fmt.Errorf("%s is required", field)
+	}
+	var s string
+	if err := json.Unmarshal(val, &s); err != nil {
+		return "", fmt.Errorf("%s must be a string", field)
+	}
+	if s == "" {
+		return "", fmt.Errorf("%s is required", field)
+	}
+	if len(s) > maxInputLen {
+		return "", fmt.Errorf("%s exceeds maximum length", field)
+	}
+	return s, nil
+}
 
 func textError(format string, args ...any) *ToolResult {
 	return &ToolResult{

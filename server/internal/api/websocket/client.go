@@ -148,7 +148,7 @@ func (c *Client) writePump(ctx context.Context) {
 
 // clientMessage represents an incoming WebSocket message from the client.
 type clientMessage struct {
-	Action    string          `json:"action"`
+	Action    string         `json:"action"`
 	EventType aicp.EventType `json:"event_type,omitempty"`
 }
 

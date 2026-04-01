@@ -29,10 +29,10 @@ func NewPrincipalService(didMgr *DIDManager, credMgr *CredentialManager, backend
 
 // RegistrationResult holds the outcome of a principal registration.
 type RegistrationResult struct {
-	DID           string               `json:"did"`
-	Document      *aicp.DIDDocument    `json:"document"`
-	AnchorReceipt *aicp.AnchorReceipt  `json:"anchor_receipt"`
-	TrustScore    *aicp.TrustScore     `json:"trust_score"`
+	DID           string              `json:"did"`
+	Document      *aicp.DIDDocument   `json:"document"`
+	AnchorReceipt *aicp.AnchorReceipt `json:"anchor_receipt"`
+	TrustScore    *aicp.TrustScore    `json:"trust_score"`
 }
 
 // Register creates a new principal identity with an initial trust score.
@@ -50,11 +50,11 @@ func (ps *PrincipalService) Register(ctx context.Context, kp *crypto.KeyPair) (*
 		DID:   did,
 		Score: 100, // Base score for identity verification.
 		Components: aicp.TrustScoreBreakdown{
-			Identity:      100,
-			AccountAge:    0,
-			Transactions:  0,
-			Endorsements:  0,
-			Credentials:   0,
+			Identity:       100,
+			AccountAge:     0,
+			Transactions:   0,
+			Endorsements:   0,
+			Credentials:    0,
 			DisputePenalty: 0,
 		},
 		ComputedAt: time.Now().UTC(),
@@ -108,11 +108,11 @@ func (ps *PrincipalService) RegisterAgent(
 		DID:   agentDID,
 		Score: 50, // Agents start with lower score than principals.
 		Components: aicp.TrustScoreBreakdown{
-			Identity:      50,
-			AccountAge:    0,
-			Transactions:  0,
-			Endorsements:  0,
-			Credentials:   0,
+			Identity:       50,
+			AccountAge:     0,
+			Transactions:   0,
+			Endorsements:   0,
+			Credentials:    0,
 			DisputePenalty: 0,
 		},
 		ComputedAt: time.Now().UTC(),
@@ -123,19 +123,19 @@ func (ps *PrincipalService) RegisterAgent(
 	}
 
 	return &AgentRegistrationResult{
-		AgentDID:         agentDID,
-		Document:         doc,
-		AnchorReceipt:    receipt,
-		DelegationCred:   delegationCred,
-		TrustScore:       &agentScore,
+		AgentDID:       agentDID,
+		Document:       doc,
+		AnchorReceipt:  receipt,
+		DelegationCred: delegationCred,
+		TrustScore:     &agentScore,
 	}, nil
 }
 
 // AgentRegistrationResult holds the outcome of an agent registration.
 type AgentRegistrationResult struct {
-	AgentDID       string                      `json:"agent_did"`
-	Document       *aicp.DIDDocument           `json:"document"`
-	AnchorReceipt  *aicp.AnchorReceipt         `json:"anchor_receipt"`
-	DelegationCred *aicp.VerifiableCredential  `json:"delegation_credential"`
-	TrustScore     *aicp.TrustScore            `json:"trust_score"`
+	AgentDID       string                     `json:"agent_did"`
+	Document       *aicp.DIDDocument          `json:"document"`
+	AnchorReceipt  *aicp.AnchorReceipt        `json:"anchor_receipt"`
+	DelegationCred *aicp.VerifiableCredential `json:"delegation_credential"`
+	TrustScore     *aicp.TrustScore           `json:"trust_score"`
 }

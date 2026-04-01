@@ -9,11 +9,18 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aicp-protocol/aicp/server/internal/crypto"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
+
+// isDuplicateKeyError checks if a PostgreSQL error is a unique constraint violation (23505).
+func isDuplicateKeyError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
 
 // PostgresBackend implements LedgerBackend using PostgreSQL.
 type PostgresBackend struct {
@@ -525,11 +532,16 @@ func (p *PostgresBackend) IsTokenUsed(ctx context.Context, jti string) (bool, er
 }
 
 func (p *PostgresBackend) MarkTokenUsed(ctx context.Context, jti string) error {
+	// Atomic insert — unique constraint on jti prevents double-spend.
+	// DO NOT use ON CONFLICT DO NOTHING; we need the duplicate to return an error.
 	_, err := p.pool.Exec(ctx,
-		`INSERT INTO used_tokens (jti, used_at) VALUES ($1, NOW()) ON CONFLICT (jti) DO NOTHING`,
+		`INSERT INTO used_tokens (jti, used_at) VALUES ($1, NOW())`,
 		jti,
 	)
 	if err != nil {
+		if isDuplicateKeyError(err) {
+			return aicp.ErrTokenAlreadyUsed
+		}
 		return fmt.Errorf("marking token used: %w", err)
 	}
 	return nil
@@ -892,6 +904,47 @@ func (p *PostgresBackend) RecordSpending(ctx context.Context, did string, amount
 		return fmt.Errorf("recording spending: %w", err)
 	}
 	return nil
+}
+
+func (p *PostgresBackend) CheckAndRecordSpending(ctx context.Context, did string, amount aicp.MoneyAmount, dailyLimit, monthlyLimit string) (bool, error) {
+	// Single atomic query: lock the relevant spending rows with FOR UPDATE,
+	// compute current daily and monthly totals, and insert a new record only
+	// if both limits would still be satisfied after adding the new amount.
+	// Returns TRUE if the row was inserted, FALSE if a limit would be breached.
+	var recorded bool
+	err := p.pool.QueryRow(ctx,
+		`WITH current AS (
+		    SELECT
+		        COALESCE(SUM(amount_value::NUMERIC) FILTER (
+		            WHERE recorded_at >= DATE_TRUNC('day', NOW() AT TIME ZONE 'UTC')
+		        ), 0) AS daily_total,
+		        COALESCE(SUM(amount_value::NUMERIC) FILTER (
+		            WHERE recorded_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'UTC')
+		        ), 0) AS monthly_total
+		    FROM spending_records
+		    WHERE did = $1 AND amount_currency = $2
+		    FOR UPDATE
+		),
+		limits_check AS (
+		    SELECT
+		        (daily_total + $3::NUMERIC) <= $4::NUMERIC AS daily_ok,
+		        (monthly_total + $3::NUMERIC) <= $5::NUMERIC AS monthly_ok
+		    FROM current
+		),
+		do_insert AS (
+		    INSERT INTO spending_records (did, amount_value, amount_currency, recorded_at)
+		    SELECT $1, $6, $2, NOW()
+		    FROM limits_check
+		    WHERE daily_ok AND monthly_ok
+		    RETURNING TRUE
+		)
+		SELECT EXISTS(SELECT 1 FROM do_insert)`,
+		did, amount.Currency, amount.Value, dailyLimit, monthlyLimit, amount.Value,
+	).Scan(&recorded)
+	if err != nil {
+		return false, fmt.Errorf("atomic check-and-record spending: %w", err)
+	}
+	return recorded, nil
 }
 
 // Compile-time interface satisfaction check.

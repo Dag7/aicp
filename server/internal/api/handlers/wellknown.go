@@ -3,13 +3,12 @@ package handlers
 import (
 	"net/http"
 
-	
 	"github.com/aicp-protocol/aicp/server/internal/discovery"
 )
 
 // WellKnownHandler handles GET /.well-known/aicp.json.
 type WellKnownHandler struct {
-	wellKnown *discovery.WellKnownService
+	wellKnown  *discovery.WellKnownService
 	serviceDID string
 }
 

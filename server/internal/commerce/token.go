@@ -40,7 +40,7 @@ func (ti *TokenIssuer) Issue(ctx context.Context, req aicp.PaymentTokenRequest) 
 	now := time.Now().UTC()
 	expiresAt := now.Add(ti.ttl)
 
-	jti := fmt.Sprintf("pt_%s_%d", crypto.SHA256Hex([]byte(req.AgentDID+req.ServiceDID+now.String()))[:16], now.UnixNano())
+	jti := fmt.Sprintf("pt_%s_%d", crypto.SHA256Hex([]byte(req.AgentDID + req.ServiceDID + now.String()))[:16], now.UnixNano())
 	nonce := crypto.SHA256Hex([]byte(fmt.Sprintf("%s:%s:%d", req.AgentDID, req.ServiceDID, now.UnixNano())))[:32]
 	idempotencyKey := crypto.SHA256Hex([]byte(jti))[:24]
 
@@ -50,11 +50,11 @@ func (ti *TokenIssuer) Issue(ctx context.Context, req aicp.PaymentTokenRequest) 
 	}
 
 	claims := aicp.PaymentTokenClaims{
-		JTI:      jti,
-		Issuer:   ti.keyID,
-		Subject:  req.AgentDID,
-		Audience: req.ServiceDID,
-		IssuedAt: now.Unix(),
+		JTI:       jti,
+		Issuer:    ti.keyID,
+		Subject:   req.AgentDID,
+		Audience:  req.ServiceDID,
+		IssuedAt:  now.Unix(),
 		ExpiresAt: expiresAt.Unix(),
 		PaymentDetails: aicp.PaymentTokenDetails{
 			Amount:          req.Amount,

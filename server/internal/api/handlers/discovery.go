@@ -57,7 +57,7 @@ func (h *DiscoveryHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.ansMgr.Register(r.Context(), req.ANSRecord); err != nil {
-		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "failed to register ANS record")
 		return
 	}
 

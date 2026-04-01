@@ -152,9 +152,9 @@ func (m *mockLedgerBackend) IsCredentialRevoked(_ context.Context, credentialID 
 }
 
 // Remaining LedgerBackend interface methods -- not used by identity tests, stubbed out.
-func (m *mockLedgerBackend) Initialize(context.Context) error                 { return nil }
-func (m *mockLedgerBackend) Close() error                                     { return nil }
-func (m *mockLedgerBackend) Healthy(context.Context) error                    { return nil }
+func (m *mockLedgerBackend) Initialize(context.Context) error { return nil }
+func (m *mockLedgerBackend) Close() error                     { return nil }
+func (m *mockLedgerBackend) Healthy(context.Context) error    { return nil }
 func (m *mockLedgerBackend) GetRevocationList(context.Context, string) (*aicp.RevocationList, error) {
 	return nil, aicp.ErrNotFound
 }
@@ -173,7 +173,7 @@ func (m *mockLedgerBackend) GetReceipt(context.Context, string) (*aicp.SignedPay
 func (m *mockLedgerBackend) ListReceiptsByAgent(context.Context, string, aicp.PaginationOpts) (*aicp.PaginatedResult[aicp.SignedPaymentReceipt], error) {
 	return &aicp.PaginatedResult[aicp.SignedPaymentReceipt]{}, nil
 }
-func (m *mockLedgerBackend) IsTokenUsed(context.Context, string) (bool, error)  { return false, nil }
+func (m *mockLedgerBackend) IsTokenUsed(context.Context, string) (bool, error)   { return false, nil }
 func (m *mockLedgerBackend) MarkTokenUsed(context.Context, string) error         { return nil }
 func (m *mockLedgerBackend) AppendEntry(context.Context, aicp.LedgerEntry) error { return nil }
 func (m *mockLedgerBackend) GetPendingEntries(context.Context) ([]aicp.LedgerEntry, error) {
@@ -216,6 +216,9 @@ func (m *mockLedgerBackend) GetMonthlySpending(context.Context, string, string) 
 }
 func (m *mockLedgerBackend) RecordSpending(context.Context, string, aicp.MoneyAmount) error {
 	return nil
+}
+func (m *mockLedgerBackend) CheckAndRecordSpending(context.Context, string, aicp.MoneyAmount, string, string) (bool, error) {
+	return true, nil
 }
 
 // ─── ParseDID Tests ──────────────────────────────────────────────────────────

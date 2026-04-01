@@ -71,7 +71,7 @@ func TestOIDCBridge_IssueAndVerifyIDToken(t *testing.T) {
 	resp, err := bridge.IssueIDToken(context.Background(), did, "https://app.example.com", "nonce-123", 5*time.Minute)
 	require.NoError(t, err)
 
-	claims, err := bridge.VerifyIDToken(resp.IDToken)
+	claims, err := bridge.VerifyIDToken(resp.IDToken, "https://app.example.com")
 	require.NoError(t, err)
 
 	assert.Equal(t, "https://idp.aicp.example.com", claims.Issuer)
@@ -91,7 +91,7 @@ func TestOIDCBridge_VerifyIDToken_Expired(t *testing.T) {
 	resp, err := bridge.IssueIDToken(context.Background(), did, "https://app.example.com", "", -1*time.Second)
 	require.NoError(t, err)
 
-	_, err = bridge.VerifyIDToken(resp.IDToken)
+	_, err = bridge.VerifyIDToken(resp.IDToken, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "expired")
 }
@@ -99,7 +99,7 @@ func TestOIDCBridge_VerifyIDToken_Expired(t *testing.T) {
 func TestOIDCBridge_VerifyIDToken_InvalidToken(t *testing.T) {
 	bridge, _ := setupOIDCBridge(t)
 
-	_, err := bridge.VerifyIDToken("not-a-valid-jws-token")
+	_, err := bridge.VerifyIDToken("not-a-valid-jws-token", "")
 	assert.Error(t, err)
 }
 
@@ -143,7 +143,7 @@ func TestOIDCBridge_VerifyIDToken_WrongIssuer(t *testing.T) {
 
 	// Verify with a different issuer URL.
 	bridge2 := NewOIDCBridge(didMgr, issuerKP, "https://issuer2.example.com")
-	_, err = bridge2.VerifyIDToken(resp.IDToken)
+	_, err = bridge2.VerifyIDToken(resp.IDToken, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "issuer mismatch")
 }
@@ -214,10 +214,21 @@ func TestOIDCBridge_AgentDID_PrincipalInClaims(t *testing.T) {
 	resp, err := bridge.IssueIDToken(context.Background(), agentDID, "aud", "", 5*time.Minute)
 	require.NoError(t, err)
 
-	claims, err := bridge.VerifyIDToken(resp.IDToken)
+	claims, err := bridge.VerifyIDToken(resp.IDToken, "")
 	require.NoError(t, err)
 	assert.Equal(t, agentDID, claims.Subject)
 	assert.Equal(t, principalDID, claims.Principal)
+}
+
+func TestOIDCBridge_VerifyIDToken_AudienceMismatch(t *testing.T) {
+	bridge, did := setupOIDCBridge(t)
+
+	resp, err := bridge.IssueIDToken(context.Background(), did, "https://app.example.com", "", 5*time.Minute)
+	require.NoError(t, err)
+
+	_, err = bridge.VerifyIDToken(resp.IDToken, "https://other.example.com")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "audience mismatch")
 }
 
 // ─── OIDC Discovery & JWKS ─────────────────────────────────────────────────

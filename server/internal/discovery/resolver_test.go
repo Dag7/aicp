@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -226,6 +227,57 @@ func TestResolver_ResolveDomain(t *testing.T) {
 
 	// We can't easily test with a real domain, but we verify the HTTP call logic.
 	// The domain resolution would normally hit https://domain/.well-known/aicp.json.
+}
+
+func TestResolver_ResolveDomain_InvalidDomain(t *testing.T) {
+	resolver, _ := newTestResolver(t)
+	ctx := context.Background()
+
+	_, err := resolver.ResolveDomain(ctx, "example.com/../../etc/passwd")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid domain")
+
+	_, err = resolver.ResolveDomain(ctx, "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid domain")
+}
+
+// ─── validateDomain ──────────────────────────────────────────────────────────
+
+func TestValidateDomain_Valid(t *testing.T) {
+	assert.NoError(t, validateDomain("example.com"))
+	assert.NoError(t, validateDomain("aicp.example.com"))
+	assert.NoError(t, validateDomain("sub.domain.co.uk"))
+}
+
+func TestValidateDomain_Empty(t *testing.T) {
+	assert.Error(t, validateDomain(""))
+}
+
+func TestValidateDomain_InvalidCharacters(t *testing.T) {
+	assert.Error(t, validateDomain("example.com/path"))
+	assert.Error(t, validateDomain("example.com:8080"))
+	assert.Error(t, validateDomain("user@example.com"))
+	assert.Error(t, validateDomain("example.com?query"))
+	assert.Error(t, validateDomain("example.com#fragment"))
+}
+
+func TestValidateDomain_PathTraversal(t *testing.T) {
+	assert.Error(t, validateDomain("example..com"))
+	assert.Error(t, validateDomain(".."))
+}
+
+// ─── decodeLimitedJSONBody ───────────────────────────────────────────────────
+
+func TestDecodeLimitedJSONBody_ValidPayload(t *testing.T) {
+	payload := `{"name":"test"}`
+	reader := strings.NewReader(payload)
+	var dest struct {
+		Name string `json:"name"`
+	}
+	err := decodeLimitedJSONBody(reader, &dest)
+	assert.NoError(t, err)
+	assert.Equal(t, "test", dest.Name)
 }
 
 // ─── FederatedSearch ────────────────────────────────────────────────────────

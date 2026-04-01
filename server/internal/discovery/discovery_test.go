@@ -78,9 +78,9 @@ func (m *mockLedgerBackend) GetTrustScore(_ context.Context, did string) (*aicp.
 }
 
 // Remaining stubs.
-func (m *mockLedgerBackend) Initialize(context.Context) error                 { return nil }
-func (m *mockLedgerBackend) Close() error                                     { return nil }
-func (m *mockLedgerBackend) Healthy(context.Context) error                    { return nil }
+func (m *mockLedgerBackend) Initialize(context.Context) error { return nil }
+func (m *mockLedgerBackend) Close() error                     { return nil }
+func (m *mockLedgerBackend) Healthy(context.Context) error    { return nil }
 func (m *mockLedgerBackend) AnchorDID(context.Context, string, aicp.DIDDocument, aicp.Proof) (*aicp.AnchorReceipt, error) {
 	return nil, nil
 }
@@ -120,7 +120,7 @@ func (m *mockLedgerBackend) GetReceipt(context.Context, string) (*aicp.SignedPay
 func (m *mockLedgerBackend) ListReceiptsByAgent(context.Context, string, aicp.PaginationOpts) (*aicp.PaginatedResult[aicp.SignedPaymentReceipt], error) {
 	return &aicp.PaginatedResult[aicp.SignedPaymentReceipt]{}, nil
 }
-func (m *mockLedgerBackend) IsTokenUsed(context.Context, string) (bool, error)  { return false, nil }
+func (m *mockLedgerBackend) IsTokenUsed(context.Context, string) (bool, error)   { return false, nil }
 func (m *mockLedgerBackend) MarkTokenUsed(context.Context, string) error         { return nil }
 func (m *mockLedgerBackend) AppendEntry(context.Context, aicp.LedgerEntry) error { return nil }
 func (m *mockLedgerBackend) GetPendingEntries(context.Context) ([]aicp.LedgerEntry, error) {
@@ -134,8 +134,8 @@ func (m *mockLedgerBackend) GetBlock(context.Context, uint64) (*aicp.Block, erro
 	return nil, aicp.ErrNotFound
 }
 func (m *mockLedgerBackend) UpdateTrustScore(context.Context, aicp.TrustScore) error { return nil }
-func (m *mockLedgerBackend) RegisterValidator(context.Context, aicp.Validator) error  { return nil }
-func (m *mockLedgerBackend) RemoveValidator(context.Context, string) error            { return nil }
+func (m *mockLedgerBackend) RegisterValidator(context.Context, aicp.Validator) error { return nil }
+func (m *mockLedgerBackend) RemoveValidator(context.Context, string) error           { return nil }
 func (m *mockLedgerBackend) ListValidators(context.Context) ([]aicp.Validator, error) {
 	return nil, nil
 }
@@ -150,6 +150,9 @@ func (m *mockLedgerBackend) GetMonthlySpending(context.Context, string, string) 
 }
 func (m *mockLedgerBackend) RecordSpending(context.Context, string, aicp.MoneyAmount) error {
 	return nil
+}
+func (m *mockLedgerBackend) CheckAndRecordSpending(context.Context, string, aicp.MoneyAmount, string, string) (bool, error) {
+	return true, nil
 }
 
 // ─── Helper ──────────────────────────────────────────────────────────────────

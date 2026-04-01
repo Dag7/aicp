@@ -68,26 +68,26 @@ type RedisConfig struct {
 
 // IdentityConfig holds settings for the identity layer.
 type IdentityConfig struct {
-	KeyType              string        `env:"KEY_TYPE"                envDefault:"Ed25519"`
-	DIDMethod            string        `env:"DID_METHOD"              envDefault:"aicp"`
-	CredentialTTL        time.Duration `env:"CREDENTIAL_TTL"          envDefault:"8760h"` // 1 year
+	KeyType                string        `env:"KEY_TYPE"                envDefault:"Ed25519"`
+	DIDMethod              string        `env:"DID_METHOD"              envDefault:"aicp"`
+	CredentialTTL          time.Duration `env:"CREDENTIAL_TTL"          envDefault:"8760h"` // 1 year
 	KeyRotationGracePeriod time.Duration `env:"KEY_ROTATION_GRACE"    envDefault:"24h"`
 }
 
 // CommerceConfig holds settings for the commerce layer.
 type CommerceConfig struct {
-	PaymentTokenTTL  time.Duration `env:"PAYMENT_TOKEN_TTL"  envDefault:"5m"`
-	PaymentTokenMax  time.Duration `env:"PAYMENT_TOKEN_MAX"  envDefault:"15m"`
-	EnabledAdapters  []string      `env:"ENABLED_ADAPTERS"   envDefault:"stripe,paypal,usdc" envSeparator:","`
-	Stripe           StripeConfig  `envPrefix:"STRIPE_"`
-	PayPal           PayPalConfig  `envPrefix:"PAYPAL_"`
-	USDC             USDCConfig    `envPrefix:"USDC_"`
+	PaymentTokenTTL time.Duration `env:"PAYMENT_TOKEN_TTL"  envDefault:"5m"`
+	PaymentTokenMax time.Duration `env:"PAYMENT_TOKEN_MAX"  envDefault:"15m"`
+	EnabledAdapters []string      `env:"ENABLED_ADAPTERS"   envDefault:"stripe,paypal,usdc" envSeparator:","`
+	Stripe          StripeConfig  `envPrefix:"STRIPE_"`
+	PayPal          PayPalConfig  `envPrefix:"PAYPAL_"`
+	USDC            USDCConfig    `envPrefix:"USDC_"`
 }
 
 // StripeConfig holds Stripe-specific settings.
 type StripeConfig struct {
-	SecretKey      string `env:"SECRET_KEY"      envDefault:""`
-	WebhookSecret  string `env:"WEBHOOK_SECRET"  envDefault:""`
+	SecretKey     string `env:"SECRET_KEY"      envDefault:""`
+	WebhookSecret string `env:"WEBHOOK_SECRET"  envDefault:""`
 }
 
 // PayPalConfig holds PayPal-specific settings.
@@ -99,9 +99,9 @@ type PayPalConfig struct {
 
 // USDCConfig holds USDC/Circle-specific settings.
 type USDCConfig struct {
-	APIKey    string `env:"API_KEY"    envDefault:""`
-	EntityID  string `env:"ENTITY_ID"  envDefault:""`
-	Sandbox   bool   `env:"SANDBOX"    envDefault:"true"`
+	APIKey   string `env:"API_KEY"    envDefault:""`
+	EntityID string `env:"ENTITY_ID"  envDefault:""`
+	Sandbox  bool   `env:"SANDBOX"    envDefault:"true"`
 }
 
 // LedgerConfig holds consortium ledger settings.
@@ -117,9 +117,9 @@ type LedgerConfig struct {
 
 // DiscoveryConfig holds ANS discovery settings.
 type DiscoveryConfig struct {
-	CacheTTL          time.Duration `env:"CACHE_TTL"           envDefault:"5m"`
-	MaxSearchResults  int           `env:"MAX_SEARCH_RESULTS"  envDefault:"50"`
-	WellKnownPath     string        `env:"WELL_KNOWN_PATH"     envDefault:"/.well-known/aicp.json"`
+	CacheTTL         time.Duration `env:"CACHE_TTL"           envDefault:"5m"`
+	MaxSearchResults int           `env:"MAX_SEARCH_RESULTS"  envDefault:"50"`
+	WellKnownPath    string        `env:"WELL_KNOWN_PATH"     envDefault:"/.well-known/aicp.json"`
 }
 
 // Load reads configuration from environment variables and validates it.

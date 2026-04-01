@@ -2,13 +2,14 @@ package identity
 
 import (
 	"context"
-	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/aicp-protocol/aicp/server/internal/crypto"
+	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
 
 // OIDCBridge maps AICP DIDs to OpenID Connect compatible identity tokens,
@@ -32,8 +33,8 @@ func NewOIDCBridge(manager *DIDManager, issuerKP *crypto.KeyPair, issuer string)
 type OIDCClaims struct {
 	// Standard OIDC claims
 	Issuer    string `json:"iss"`
-	Subject   string `json:"sub"`             // The DID
-	Audience  string `json:"aud,omitempty"`    // Relying party
+	Subject   string `json:"sub"`           // The DID
+	Audience  string `json:"aud,omitempty"` // Relying party
 	ExpiresAt int64  `json:"exp"`
 	IssuedAt  int64  `json:"iat"`
 	Nonce     string `json:"nonce,omitempty"`
@@ -58,15 +59,33 @@ type OIDCTokenResponse struct {
 // IssueIDToken creates an OIDC-compatible ID token from a verified AICP DID.
 // The caller must have already verified the DID's proof of control.
 func (ob *OIDCBridge) IssueIDToken(ctx context.Context, did string, audience string, nonce string, ttl time.Duration) (*OIDCTokenResponse, error) {
-	// Resolve the DID to get the document.
 	result, err := ob.manager.Resolve(ctx, did)
 	if err != nil {
 		return nil, fmt.Errorf("resolving DID for OIDC: %w", err)
+	}
+	if result.Document == nil || result.DocumentMetadata == nil {
+		return nil, fmt.Errorf("incomplete DID resolution result")
 	}
 	if result.DocumentMetadata.Deactivated {
 		return nil, fmt.Errorf("DID is deactivated")
 	}
 
+	claims := ob.buildClaims(did, audience, nonce, ttl, result)
+
+	token, err := ob.signToken(claims)
+	if err != nil {
+		return nil, fmt.Errorf("signing OIDC token: %w", err)
+	}
+
+	return &OIDCTokenResponse{
+		IDToken:   token,
+		TokenType: "Bearer",
+		ExpiresIn: int(ttl.Seconds()),
+	}, nil
+}
+
+// buildClaims constructs the OIDC claims from a resolved DID document.
+func (ob *OIDCBridge) buildClaims(did, audience, nonce string, ttl time.Duration, result *aicp.DIDResolutionResult) OIDCClaims {
 	now := time.Now().UTC()
 	claims := OIDCClaims{
 		Issuer:    ob.issuer,
@@ -80,7 +99,7 @@ func (ob *OIDCBridge) IssueIDToken(ctx context.Context, did string, audience str
 		KeyType:   "Ed25519",
 	}
 
-	// Add principal if this is an agent DID.
+	// Add principal: prefer explicit field, fall back to controller.
 	if result.Document.AICPPrincipal != "" {
 		claims.Principal = result.Document.AICPPrincipal
 	} else if result.Document.Controller != did {
@@ -93,17 +112,7 @@ func (ob *OIDCBridge) IssueIDToken(ctx context.Context, did string, audience str
 		claims.PublicKeyHash = crypto.SHA256Hex([]byte(vm.PublicKeyMultibase))[:16]
 	}
 
-	// Sign the token.
-	token, err := ob.signToken(claims)
-	if err != nil {
-		return nil, fmt.Errorf("signing OIDC token: %w", err)
-	}
-
-	return &OIDCTokenResponse{
-		IDToken:   token,
-		TokenType: "Bearer",
-		ExpiresIn: int(ttl.Seconds()),
-	}, nil
+	return claims
 }
 
 // OIDCDiscovery returns the OIDC discovery document (.well-known/openid-configuration).
@@ -125,9 +134,9 @@ func (ob *OIDCBridge) OIDCDiscovery() map[string]any {
 }
 
 // JWKS returns the JSON Web Key Set containing the issuer's public key.
+// The public key is encoded as base64url per RFC 8037 (OKP/Ed25519).
 func (ob *OIDCBridge) JWKS() map[string]any {
 	pubKey := ob.issuerKP.PublicKey
-	multibase := crypto.PublicKeyMultibase(ed25519.PublicKey(pubKey))
 
 	return map[string]any{
 		"keys": []map[string]any{
@@ -136,7 +145,7 @@ func (ob *OIDCBridge) JWKS() map[string]any {
 				"crv": "Ed25519",
 				"use": "sig",
 				"kid": crypto.SHA256Hex(pubKey)[:16],
-				"x":   multibase,
+				"x":   base64.RawURLEncoding.EncodeToString(pubKey),
 			},
 		},
 	}
@@ -153,7 +162,8 @@ func (ob *OIDCBridge) signToken(claims OIDCClaims) (string, error) {
 }
 
 // VerifyIDToken verifies an AICP OIDC ID token and returns the claims.
-func (ob *OIDCBridge) VerifyIDToken(token string) (*OIDCClaims, error) {
+// The expectedAudience parameter, if non-empty, is checked against the token's aud claim.
+func (ob *OIDCBridge) VerifyIDToken(token string, expectedAudience string) (*OIDCClaims, error) {
 	payload, err := crypto.VerifyJWS(ob.issuerKP.PublicKey, token)
 	if err != nil {
 		return nil, fmt.Errorf("verifying OIDC token signature: %w", err)
@@ -164,14 +174,16 @@ func (ob *OIDCBridge) VerifyIDToken(token string) (*OIDCClaims, error) {
 		return nil, fmt.Errorf("decoding OIDC claims: %w", err)
 	}
 
-	// Check expiration.
 	if time.Now().Unix() > claims.ExpiresAt {
 		return nil, fmt.Errorf("OIDC token expired")
 	}
 
-	// Verify issuer.
 	if claims.Issuer != ob.issuer {
 		return nil, fmt.Errorf("OIDC issuer mismatch: got %s, expected %s", claims.Issuer, ob.issuer)
+	}
+
+	if expectedAudience != "" && claims.Audience != expectedAudience {
+		return nil, fmt.Errorf("OIDC audience mismatch: got %s, expected %s", claims.Audience, expectedAudience)
 	}
 
 	return &claims, nil

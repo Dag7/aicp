@@ -152,7 +152,10 @@ func NewServer(logger *slog.Logger) *Server {
 }
 
 // SetIO sets custom input/output streams (useful for testing).
+// Must be called before Run.
 func (s *Server) SetIO(in io.Reader, out io.Writer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.in = in
 	s.out = out
 }
@@ -203,16 +206,14 @@ func (s *Server) Run(ctx context.Context) error {
 			continue
 		}
 
-		// Notifications (no id) don't get a response.
-		if req.ID == nil && req.Method == "notifications/initialized" {
-			s.logger.Debug("client initialized notification received")
+		// Notifications (no id) don't get a response per JSON-RPC 2.0.
+		if req.ID == nil {
+			s.logger.Debug("notification received", "method", req.Method)
 			continue
 		}
 
 		resp := s.handleRequest(ctx, req)
-		if req.ID != nil {
-			s.writeResponse(resp)
-		}
+		s.writeResponse(resp)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -233,7 +234,8 @@ func (s *Server) handleRequest(ctx context.Context, req Request) Response {
 	case "tools/call":
 		result, err := s.handleToolsCall(ctx, req.Params)
 		if err != nil {
-			resp.Error = &RPCError{Code: CodeInternalError, Message: err.Error()}
+			s.logger.Error("tools/call failed", "error", err)
+			resp.Error = &RPCError{Code: CodeInvalidParams, Message: "invalid tool call parameters"}
 		} else {
 			resp.Result = result
 		}
@@ -242,7 +244,8 @@ func (s *Server) handleRequest(ctx context.Context, req Request) Response {
 	case "resources/read":
 		result, err := s.handleResourcesRead(ctx, req.Params)
 		if err != nil {
-			resp.Error = &RPCError{Code: CodeInternalError, Message: err.Error()}
+			s.logger.Error("resources/read failed", "error", err)
+			resp.Error = &RPCError{Code: CodeInternalError, Message: "resource read failed"}
 		} else {
 			resp.Result = result
 		}

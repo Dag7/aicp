@@ -26,9 +26,9 @@ func NewTokenValidator(backend ledger.LedgerBackend) *TokenValidator {
 
 // ValidationResult holds the outcome of token validation.
 type ValidationResult struct {
-	Valid    bool                    `json:"valid"`
-	Claims   *aicp.PaymentTokenClaims `json:"claims,omitempty"`
-	Errors   []string                `json:"errors,omitempty"`
+	Valid  bool                     `json:"valid"`
+	Claims *aicp.PaymentTokenClaims `json:"claims,omitempty"`
+	Errors []string                 `json:"errors,omitempty"`
 }
 
 // Validate performs full token validation: parse, verify signature, check expiry,
@@ -40,7 +40,7 @@ func (tv *TokenValidator) Validate(ctx context.Context, token string, issuerPubK
 	pubKey, err := crypto.PublicKeyFromMultibase(issuerPubKeyMultibase)
 	if err != nil {
 		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf("invalid issuer key: %v", err))
+		result.Errors = append(result.Errors, "invalid issuer key")
 		return result, nil
 	}
 
@@ -48,7 +48,7 @@ func (tv *TokenValidator) Validate(ctx context.Context, token string, issuerPubK
 	var claims aicp.PaymentTokenClaims
 	if err := tv.verifier.VerifyClaims(token, pubKey, &claims); err != nil {
 		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf("signature verification failed: %v", err))
+		result.Errors = append(result.Errors, "signature verification failed")
 		return result, nil
 	}
 
@@ -74,7 +74,9 @@ func (tv *TokenValidator) Validate(ctx context.Context, token string, issuerPubK
 	return result, nil
 }
 
-// MarkUsed records a token JTI as consumed (replay prevention).
+// MarkUsed atomically marks a token JTI as consumed (replay prevention).
+// Returns ErrTokenAlreadyUsed if the JTI was already consumed, preventing
+// double-spend via concurrent requests.
 func (tv *TokenValidator) MarkUsed(ctx context.Context, jti string) error {
 	return tv.backend.MarkTokenUsed(ctx, jti)
 }

@@ -14,8 +14,8 @@ import (
 
 // SignatureRequest is the body of POST /validator/sign.
 type SignatureRequest struct {
-	BlockHash     string              `json:"block_hash"`
-	ProposedBlock ProposedBlockWire   `json:"proposed_block"`
+	BlockHash     string            `json:"block_hash"`
+	ProposedBlock ProposedBlockWire `json:"proposed_block"`
 }
 
 // FetchBlocksRequest is the body of POST /validator/blocks.
@@ -53,19 +53,19 @@ type HealthResponse struct {
 
 // ProposedBlockWire is the JSON-safe wire format for a ProposedBlock.
 type ProposedBlockWire struct {
-	Number       uint64              `json:"number"`
-	PreviousHash string              `json:"previous_hash"`
-	MerkleRoot   string              `json:"merkle_root"`
-	Entries      []aicp.LedgerEntry  `json:"entries"`
-	ProposerDID  string              `json:"proposer_did"`
-	ProposerSig  string              `json:"proposer_sig"`
-	Timestamp    int64               `json:"timestamp"`
+	Number       uint64             `json:"number"`
+	PreviousHash string             `json:"previous_hash"`
+	MerkleRoot   string             `json:"merkle_root"`
+	Entries      []aicp.LedgerEntry `json:"entries"`
+	ProposerDID  string             `json:"proposer_did"`
+	ProposerSig  string             `json:"proposer_sig"`
+	Timestamp    int64              `json:"timestamp"`
 }
 
 // FinalizedBlockWire is the JSON-safe wire format for a FinalizedBlock.
 type FinalizedBlockWire struct {
-	Block      BlockWire            `json:"block"`
-	Signatures []ValidatorSigWire   `json:"signatures"`
+	Block      BlockWire          `json:"block"`
+	Signatures []ValidatorSigWire `json:"signatures"`
 }
 
 // BlockWire is the JSON-safe wire format for a Block.

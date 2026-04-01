@@ -87,30 +87,32 @@ func (v *JWSVerifier) VerifyClaims(token string, publicKey ed25519.PublicKey, de
 	return nil
 }
 
-// VerifyClaimsWithExpiry parses, verifies the signature, and checks expiration.
+// VerifyClaimsWithExpiry parses, verifies the signature, checks expiration,
+// and unmarshals the payload into dest. Uses a single parse+verify pass.
 func (v *JWSVerifier) VerifyClaimsWithExpiry(token string, publicKey ed25519.PublicKey, dest any) error {
-	if err := v.VerifyClaims(token, publicKey, dest); err != nil {
-		return err
-	}
-
-	// Try to extract standard JWT claims for expiry check.
 	parsed, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.EdDSA})
 	if err != nil {
-		return err
+		return fmt.Errorf("parsing JWS: %w", err)
 	}
 
 	payload, err := parsed.Verify(publicKey)
 	if err != nil {
-		return err
+		return fmt.Errorf("verifying JWS signature: %w", err)
 	}
 
+	// Check expiration from standard JWT claims before unmarshaling dest.
 	var stdClaims jwt.Claims
 	if err := json.Unmarshal(payload, &stdClaims); err == nil {
-		if stdClaims.Expiry != nil {
-			if stdClaims.Expiry.Time().Before(time.Now()) {
-				return fmt.Errorf("token expired at %s", stdClaims.Expiry.Time())
-			}
+		if stdClaims.Expiry != nil && stdClaims.Expiry.Time().Before(time.Now()) {
+			return fmt.Errorf("token expired at %s", stdClaims.Expiry.Time())
 		}
+		if stdClaims.NotBefore != nil && stdClaims.NotBefore.Time().After(time.Now()) {
+			return fmt.Errorf("token not yet valid (nbf: %s)", stdClaims.NotBefore.Time())
+		}
+	}
+
+	if err := json.Unmarshal(payload, dest); err != nil {
+		return fmt.Errorf("unmarshaling claims: %w", err)
 	}
 
 	return nil

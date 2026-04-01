@@ -3,7 +3,6 @@ package handlers
 import (
 	"net/http"
 
-	
 	"github.com/aicp-protocol/aicp/server/internal/ledger"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )

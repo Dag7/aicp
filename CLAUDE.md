@@ -164,10 +164,25 @@ task all            # Build + test + lint everything
 - Redis-backed per-IP rate limiting via `middleware.RateLimit()`
 - Configurable max requests and window via env vars
 
+### Payment Security
+- **Atomic double-spend prevention**: Token JTI uniqueness enforced via PostgreSQL unique constraint violations (error code 23505) — INSERT fails atomically on duplicate, preventing TOCTOU race conditions
+- **Atomic spending limits**: `CheckAndRecordSpending` combines limit check and record in a single SQL CTE with `FOR UPDATE` row locking — prevents concurrent overspend
+- **Amount bounds validation**: Payments capped at 999,999,999.99, currency must be valid ISO 4217 (3-letter uppercase) or recognized crypto ticker
+- **Human approval workflow**: Transactions above configurable thresholds require principal approval via `ApprovalService` with 15-minute TTL
+- **Error sanitization**: `ProtocolErrorResponse` returns generic "an internal error occurred" for non-ProtocolError types — never leaks database, stack, or internal path information
+
+### Cryptographic Security
+- **Constant-time challenge verification**: `crypto/subtle.ConstantTimeCompare` prevents timing attacks on DID-Auth challenge-response (onboarding/challenge.go)
+- **Merkle tree domain separation**: RFC 6962 compliant — leaf nodes prefixed with 0x00, internal nodes with 0x01, preventing second preimage attacks
+- **Ed25519 only**: All JWS signatures use EdDSA algorithm exclusively, enforced by go-jose/v4 algorithm allowlist
+
 ### Infrastructure Security
 - **No JSON injection**: All error responses use `json.Marshal`, never string concatenation
 - **Panic recovery**: `middleware.Recovery()` catches panics, logs stack traces
+- **WebSocket authentication required**: WebSocket upgrade rejects connections when `TicketAuth` is nil (returns 503) — no unauthenticated fallback
 - **WebSocket origin check**: Uses configured `AllowedOrigins` (not wildcard `*` in production)
+- **SSRF prevention**: Domain validation (`validateDomain`) rejects path traversal and special characters in federation peer discovery
+- **Response size limiting**: Federation responses capped at 1 MiB via `io.LimitReader`
 
 ## Agent Identity Model
 
@@ -395,6 +410,14 @@ IDs are base58btc-encoded truncated SHA-256 (first 16 bytes) of the public key.
 - Custom claims: `aicp_did`, `aicp_principal`, `aicp_capabilities`, `aicp_trust_score`
 - Standard OIDC discovery (`/.well-known/openid-configuration`) and JWKS endpoints
 - Token verification with expiration and issuer validation
+
+### Testing
+- **Unit tests**: `go test ./...` — all packages have test coverage
+- **Security tests**: Dedicated tests for double-spend prevention, timing attack resistance, error sanitization, Merkle collision resistance, capability matching
+- **E2E tests**: `go test -tags=e2e ./internal/api/` — requires live server at localhost:8080, exercises full protocol flow (DID → Agent → Onboard → Verify → Pay → Trust)
+- **Concurrency tests**: Race condition tests for token replay and spending limit enforcement
+- **Miniredis**: Onboarding tests use `alicebob/miniredis/v2` for in-process Redis
+- **Build tag**: E2E tests gated behind `//go:build e2e` to avoid running in CI without a live server
 
 ### Implementation Notes
 - Response helpers live in `handlers` package (not `api`) to avoid import cycles

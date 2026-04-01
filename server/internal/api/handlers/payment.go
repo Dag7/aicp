@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"math/big"
 	"net/http"
 	"regexp"
@@ -12,8 +13,17 @@ import (
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
 
+// maxPurposeLength is the maximum allowed length for a payment purpose string.
+const maxPurposeLength = 256
+
+// maxPaymentAmount is the upper bound for a single payment amount.
+const maxPaymentAmount = "999999999.99"
+
 // amountPattern validates payment amount format: positive decimal, max 15 digits + 8 decimals.
 var amountPattern = regexp.MustCompile(`^\d{1,15}(\.\d{1,8})?$`)
+
+// currencyPattern validates ISO 4217 currency codes: exactly 3 uppercase ASCII letters.
+var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // validCurrencies are the supported ISO 4217 currency codes and crypto.
 var validCurrencies = map[string]bool{
@@ -55,12 +65,12 @@ func (h *PaymentHandler) RequestToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validateAmount(req.Amount); err != "" {
-		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", err)
+	if err := validateAmount(req.Amount); err != nil {
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 		return
 	}
 
-	if len(req.Purpose) > 256 {
+	if len(req.Purpose) > maxPurposeLength {
 		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "purpose must be 256 characters or fewer")
 		return
 	}
@@ -114,25 +124,35 @@ func (h *PaymentHandler) Status(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateAmount validates a payment amount for format, positivity, and currency.
-// Returns an error message string, or empty string if valid.
-func validateAmount(amount aicp.MoneyAmount) string {
+func validateAmount(amount aicp.MoneyAmount) error {
 	if amount.Value == "" || amount.Currency == "" {
-		return "amount value and currency are required"
+		return fmt.Errorf("amount value and currency are required")
 	}
 
 	if !amountPattern.MatchString(amount.Value) {
-		return "amount value must be a positive decimal number (max 15 digits, 8 decimal places)"
+		return fmt.Errorf("amount value must be a positive decimal number (max 15 digits, 8 decimal places)")
 	}
 
 	// Verify the value is actually positive (not "0" or "0.00").
 	val, ok := new(big.Float).SetString(amount.Value)
 	if !ok || val.Sign() <= 0 {
-		return "amount value must be greater than zero"
+		return fmt.Errorf("amount value must be greater than zero")
+	}
+
+	// Enforce upper bound to prevent absurdly large payment amounts.
+	maxVal, _ := new(big.Float).SetString(maxPaymentAmount)
+	if val.Cmp(maxVal) > 0 {
+		return fmt.Errorf("amount value must not exceed %s", maxPaymentAmount)
+	}
+
+	// Currency must be a valid 3-letter uppercase ISO 4217 code or a known crypto ticker.
+	if !currencyPattern.MatchString(amount.Currency) && !validCurrencies[amount.Currency] {
+		return fmt.Errorf("currency must be a 3-letter uppercase ISO 4217 code")
 	}
 
 	if !validCurrencies[amount.Currency] {
-		return "unsupported currency; use ISO 4217 code (USD, EUR, GBP, etc.) or USDC"
+		return fmt.Errorf("unsupported currency; use ISO 4217 code (USD, EUR, GBP, etc.) or USDC")
 	}
 
-	return ""
+	return nil
 }

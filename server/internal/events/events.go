@@ -39,7 +39,7 @@ func (b *EventBuilder) Build() (aicp.Event, error) {
 		dataJSON = d
 	}
 	now := time.Now().UTC()
-	eventID := fmt.Sprintf("evt_%s_%d", crypto.SHA256Hex([]byte(string(b.eventType)+b.source+now.String()))[:12], now.UnixNano())
+	eventID := fmt.Sprintf("evt_%s_%d", crypto.SHA256Hex([]byte(string(b.eventType) + b.source + now.String()))[:12], now.UnixNano())
 	return aicp.Event{
 		EventID:   eventID,
 		Type:      b.eventType,

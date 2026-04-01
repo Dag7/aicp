@@ -150,8 +150,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // errorResponse matches the project-wide JSON error envelope.
 type errorResponse struct {
-	Success bool           `json:"success"`
-	Error   *errorPayload  `json:"error,omitempty"`
+	Success bool          `json:"success"`
+	Error   *errorPayload `json:"error,omitempty"`
 }
 
 type errorPayload struct {

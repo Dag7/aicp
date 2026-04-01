@@ -55,7 +55,7 @@ func (cc *CapabilityChecker) HasCapabilityForResource(ctx context.Context, agent
 	// Check fine-grained CapabilityGrant if present in credential subject.
 	grants, err := extractCapabilityGrants(chain.Credential)
 	if err != nil {
-		return false, nil // Gracefully degrade on parse failure.
+		return false, fmt.Errorf("parsing capability grants: %w", err)
 	}
 
 	for _, grant := range grants {
@@ -117,11 +117,6 @@ func matchesSingleCapability(granted string, required aicp.CapabilityType) bool 
 		if strings.HasPrefix(req, prefix+":") {
 			return true
 		}
-	}
-
-	// Category match: "payment" matches "payment:read", etc.
-	if strings.HasPrefix(req, granted+":") {
-		return true
 	}
 
 	return false

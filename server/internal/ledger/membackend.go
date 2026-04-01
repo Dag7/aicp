@@ -32,9 +32,9 @@ type MemoryBackend struct {
 	mu sync.RWMutex
 
 	// DID storage
-	didDocs       map[string]aicp.DIDDocument        // did -> latest doc
-	didMeta       map[string]*aicp.DIDDocumentMetadata // did -> metadata
-	didDeactivated map[string]bool                     // did -> deactivated
+	didDocs        map[string]aicp.DIDDocument          // did -> latest doc
+	didMeta        map[string]*aicp.DIDDocumentMetadata // did -> metadata
+	didDeactivated map[string]bool                      // did -> deactivated
 
 	// Credential storage
 	credentials       map[string]aicp.VerifiableCredential // credentialID -> VC
@@ -44,13 +44,13 @@ type MemoryBackend struct {
 	revocationLists map[string]aicp.RevocationList // listID -> list
 
 	// Receipt storage
-	receipts  map[string]aicp.SignedPaymentReceipt // receiptID -> receipt
-	usedJTIs  map[string]bool                      // jti -> used
+	receipts map[string]aicp.SignedPaymentReceipt // receiptID -> receipt
+	usedJTIs map[string]bool                      // jti -> used
 
 	// Ledger entries and blocks
-	entries     []aicp.LedgerEntry        // all entries, ordered by ID
-	nextEntryID uint64                    // auto-increment for entry IDs
-	blocks      map[uint64]aicp.Block     // number -> block
+	entries     []aicp.LedgerEntry    // all entries, ordered by ID
+	nextEntryID uint64                // auto-increment for entry IDs
+	blocks      map[uint64]aicp.Block // number -> block
 
 	// Trust scores
 	trustScores map[string]aicp.TrustScore // did -> score
@@ -98,7 +98,7 @@ var _ LedgerBackend = (*MemoryBackend)(nil)
 
 func (m *MemoryBackend) Initialize(_ context.Context) error { return nil }
 func (m *MemoryBackend) Close() error                       { return nil }
-func (m *MemoryBackend) Healthy(_ context.Context) error     { return nil }
+func (m *MemoryBackend) Healthy(_ context.Context) error    { return nil }
 
 // ── DID Operations ───────────────────────────────────────────────────────────
 
@@ -412,6 +412,9 @@ func (m *MemoryBackend) MarkTokenUsed(_ context.Context, jti string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.usedJTIs[jti] {
+		return aicp.ErrTokenAlreadyUsed
+	}
 	m.usedJTIs[jti] = true
 	return nil
 }
@@ -718,4 +721,49 @@ func (m *MemoryBackend) RecordSpending(_ context.Context, did string, amount aic
 		RecordedAt: time.Now().UTC(),
 	})
 	return nil
+}
+
+func (m *MemoryBackend) CheckAndRecordSpending(_ context.Context, did string, amount aicp.MoneyAmount, dailyLimit, monthlyLimit string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now().UTC()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	dailyTotal := m.sumSpending(did, amount.Currency, startOfDay)
+	monthlyTotal := m.sumSpending(did, amount.Currency, startOfMonth)
+
+	// Parse all values for comparison.
+	txVal, err := strconv.ParseFloat(amount.Value, 64)
+	if err != nil {
+		return false, fmt.Errorf("invalid amount value: %s", amount.Value)
+	}
+	dailyCur, err := strconv.ParseFloat(dailyTotal, 64)
+	if err != nil {
+		return false, fmt.Errorf("parsing daily total: %w", err)
+	}
+	monthlyCur, err := strconv.ParseFloat(monthlyTotal, 64)
+	if err != nil {
+		return false, fmt.Errorf("parsing monthly total: %w", err)
+	}
+	dLimit, err := strconv.ParseFloat(dailyLimit, 64)
+	if err != nil {
+		return false, fmt.Errorf("invalid daily limit: %s", dailyLimit)
+	}
+	mLimit, err := strconv.ParseFloat(monthlyLimit, 64)
+	if err != nil {
+		return false, fmt.Errorf("invalid monthly limit: %s", monthlyLimit)
+	}
+
+	if dailyCur+txVal > dLimit || monthlyCur+txVal > mLimit {
+		return false, nil
+	}
+
+	m.spendingRecords = append(m.spendingRecords, spendingRecord{
+		DID:        did,
+		Amount:     amount,
+		RecordedAt: now,
+	})
+	return true, nil
 }
