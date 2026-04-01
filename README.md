@@ -118,7 +118,8 @@ sdk/typescript/  TypeScript client SDK (@aicp/sdk)
 sdk/python/      Python client SDK (aicp)
 spec/            OpenAPI 3.1 + JSON Schema (protocol source of truth)
 deploy/          Docker, Helm charts, Grafana dashboards
-docs/            Protocol spec, architecture, guides
+docs/            Protocol paper, specs, architecture, guides
+k8s/             Local K8s manifests (PostgreSQL, Redis, Prometheus, Grafana, ingress)
 ```
 
 ## Complementary to Existing Protocols
@@ -129,10 +130,28 @@ AICP provides the identity and discovery substrate that existing protocols need:
 - **MCP** (Anthropic): Agents access MCP tool servers with verifiable authorization
 - **ACP** (Stripe/OpenAI): Agents initiate ACP checkout with scoped payment tokens
 
+## Monitoring & Observability
+
+AICP includes production-grade observability out of the box:
+
+- **Prometheus**: Scrapes all `aicp_*` metrics from the server metrics port
+- **Grafana**: 4 pre-built dashboards (overview, identity/onboarding, commerce, ANS performance)
+- **Structured logging**: JSON logs via Go's `log/slog` with correlation IDs
+
+In the local k3d environment, Prometheus, Grafana, and all services are accessible via Traefik ingress:
+
+| Service | URL |
+|---------|-----|
+| AICP Server | http://aicp.localhost:8081 |
+| Grafana | http://grafana.localhost:8081 |
+| pgAdmin | http://pgadmin.localhost:8081 |
+| Prometheus | http://prometheus.localhost:8081 |
+
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
+| [Protocol Paper](docs/paper/AICP_Protocol_Paper_v2.0.html) | Full technical specification (17 sections, 7 diagrams) |
 | [Architecture](docs/architecture.md) | System design, patterns, interfaces, API reference |
 | [Development](docs/development.md) | Dev environment setup (devcontainer, k3d, Tilt) |
 | [Deployment](docs/deployment.md) | Docker, Helm, K8s operator, monitoring |

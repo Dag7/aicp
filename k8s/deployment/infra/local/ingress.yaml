@@ -1,0 +1,107 @@
+---
+# Traefik IngressRoute for AICP services
+# Accessible via *.localhost:8081 (k3d maps host:8081 → traefik:80)
+#
+# Routes:
+#   grafana.localhost:8081    → Grafana dashboards
+#   pgadmin.localhost:8081    → pgAdmin database UI
+#   prometheus.localhost:8081 → Prometheus query UI
+#   aicp.localhost:8081       → AICP protocol server
+#   metrics.localhost:8081    → AICP Prometheus metrics endpoint
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: aicp
+  labels:
+    app.kubernetes.io/part-of: aicp
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+    - host: grafana.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pgadmin-ingress
+  namespace: aicp
+  labels:
+    app.kubernetes.io/part-of: aicp
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+    - host: pgadmin.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pgadmin
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-ingress
+  namespace: aicp
+  labels:
+    app.kubernetes.io/part-of: aicp
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+    - host: prometheus.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus
+                port:
+                  number: 9090
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aicp-server-ingress
+  namespace: aicp
+  labels:
+    app.kubernetes.io/part-of: aicp
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+    - host: aicp.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aicp-server
+                port:
+                  number: 8080
+    - host: metrics.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aicp-server
+                port:
+                  number: 9090

@@ -30,6 +30,9 @@ coverage.html
 *~
 .DS_Store
 
+# Tool artifacts
+.playwright-mcp/
+
 # TypeScript SDK
 sdk/typescript/node_modules/
 sdk/typescript/dist/
@@ -69,6 +72,9 @@ docs/site/node_modules/
 # Test artifacts
 *.prof
 *.trace
+
+# Logs
+*.log
 
 # Temporary
 tmp/

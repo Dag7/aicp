@@ -167,10 +167,21 @@ Pre-built dashboards are in [`deploy/grafana/dashboards/`](../deploy/grafana/das
 
 | Dashboard | Description |
 |-----------|-------------|
-| `aicp-overview.json` | Request rates, latency, error rates |
-| `identity-onboarding.json` | DID operations, onboarding flow metrics |
-| `commerce.json` | Payment token issuance, execution, receipts |
-| `ans-performance.json` | ANS resolution latency, cache hit rates |
+| `aicp-overview.json` | Request rates, latency percentiles, error rates, uptime, memory |
+| `identity-onboarding.json` | DID operations, credential lifecycle, onboarding phases, trust scores |
+| `commerce.json` | Payment token issuance, execution, revenue by adapter, spending limits |
+| `ans-performance.json` | ANS resolution rate, search latency, cache hit ratio, top services |
+
+All metrics use the `aicp_` prefix (e.g., `aicp_http_requests_total`, `aicp_http_request_duration_seconds_bucket`).
+
+#### Local k3d Deployment
+
+In the local dev environment, Prometheus and Grafana are auto-deployed by Tilt:
+
+- **Prometheus** (`k8s/deployment/infra/local/prometheus.yaml`): Scrapes `aicp-server.aicp.svc.cluster.local:9090`
+- **Grafana** (`k8s/deployment/infra/local/grafana.yaml`): Auto-provisioned with Prometheus datasource and all 4 dashboards
+- **Dashboards ConfigMap** (`k8s/deployment/infra/local/grafana-dashboards.yaml`): Static YAML with dashboard JSONs embedded
+- **Traefik Ingress** (`k8s/deployment/infra/local/ingress.yaml`): Routes `grafana.localhost:8081`, `prometheus.localhost:8081`, etc.
 
 ### Health Checks
 

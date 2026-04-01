@@ -134,21 +134,45 @@ initiated -> identity_presented -> capabilities_negotiated -> payment_authorized
 
 ## REST API
 
+### Public Endpoints (no authentication)
+
 | Endpoint | Method | Layer | Description |
 |----------|--------|-------|-------------|
-| `/.well-known/aicp.json` | GET | Discovery | Service manifest |
+| `/health` | GET | Infra | Liveness probe |
+| `/ready` | GET | Infra | Readiness probe |
+| `/metrics` | GET | Infra | Prometheus metrics (`aicp_*` prefix) |
+| `/.well-known/aicp.json` | GET | Discovery | ANS service manifest |
+| `/aicp/v1/did` | POST | Identity | Create principal DID |
+| `/aicp/v1/did/{did}` | GET | Identity | Resolve DID document |
+| `/aicp/v1/discover/search` | GET | Discovery | Full-text ANS search |
+| `/aicp/v1/discover/{did}` | GET | Discovery | Get ANS record by DID |
+| `/aicp/v1/trust/{did}` | GET | Trust | Get trust score |
 | `/aicp/v1/onboard` | POST | Onboarding | Initiate registration |
 | `/aicp/v1/onboard/{id}/negotiate` | POST | Onboarding | Negotiate capabilities |
 | `/aicp/v1/onboard/{id}/authorize` | POST | Onboarding | Authorize payment |
 | `/aicp/v1/onboard/{id}/provision` | POST | Onboarding | Provision agent |
-| `/aicp/v1/verify` | POST | Identity | Verify credentials |
+| `/aicp/v1/verify` | POST | Identity | Verify delegation chain |
+
+### Authenticated Endpoints (DID-Auth JWS Bearer)
+
+| Endpoint | Method | Layer | Description |
+|----------|--------|-------|-------------|
+| `/aicp/v1/did/agent` | POST | Identity | Create agent DID |
+| `/aicp/v1/did/{did}` | PUT | Identity | Update DID document |
+| `/aicp/v1/did/{did}/deactivate` | POST | Identity | Deactivate DID |
+| `/aicp/v1/discover/register` | POST | Discovery | Register ANS record |
+| `/aicp/v1/discover/{did}` | DELETE | Discovery | Delete ANS record |
 | `/aicp/v1/payment/token` | POST | Commerce | Request payment token |
 | `/aicp/v1/payment/execute` | POST | Commerce | Execute payment |
 | `/aicp/v1/payment/status/{id}` | GET | Commerce | Check payment status |
+| `/aicp/v1/payment/approval/{id}` | GET | Commerce | Get approval status |
+| `/aicp/v1/payment/approval/{id}/approve` | POST | Commerce | Approve payment |
+| `/aicp/v1/payment/approval/{id}/deny` | POST | Commerce | Deny payment |
+| `/aicp/v1/payment/approvals/pending` | GET | Commerce | List pending approvals |
+| `/aicp/v1/credentials/issue` | POST | Identity | Issue credential |
+| `/aicp/v1/credentials/{id}/revoke` | POST | Identity | Revoke credential |
 | `/aicp/v1/ws/ticket` | POST | WebSocket | Get connection ticket |
-| `/health` | GET | Infra | Liveness |
-| `/ready` | GET | Infra | Readiness |
-| `/metrics` | GET | Infra | Prometheus metrics |
+| `/aicp/v1/ws` | GET | WebSocket | WebSocket upgrade (ticket auth) |
 
 Full specification: [`spec/openapi.yaml`](../spec/openapi.yaml)
 

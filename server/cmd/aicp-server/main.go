@@ -28,6 +28,7 @@ import (
 	"github.com/aicp-protocol/aicp/server/internal/events"
 	"github.com/aicp-protocol/aicp/server/internal/identity"
 	"github.com/aicp-protocol/aicp/server/internal/ledger"
+	"github.com/aicp-protocol/aicp/server/internal/ledger/transport"
 	"github.com/aicp-protocol/aicp/server/internal/onboarding"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
@@ -125,9 +126,11 @@ func run() error {
 	didMgr := identity.NewDIDManager(backend)
 	credMgr := identity.NewCredentialManager(backend, didMgr)
 	delegationVerifier := identity.NewDelegationVerifier(backend, didMgr, credMgr)
+	principalSvc := identity.NewPrincipalService(didMgr, credMgr, backend)
 
 	// ── Discovery Layer ─────────────────────────────────────────────────
 	ansMgr := discovery.NewANSManager(backend)
+	searchSvc := discovery.NewSearchService(backend)
 	wellKnownSvc := discovery.NewWellKnownService(ansMgr)
 
 	// ── Event System ────────────────────────────────────────────────────
@@ -197,15 +200,32 @@ func run() error {
 	blockProducer.Start(ctx)
 	defer blockProducer.Stop()
 
-	// BlockSyncer prepared for future gRPC transport integration.
+	// ── Validator Transport & Block Sync ─────────────────────────────
 	blockSyncer := ledger.NewBlockSyncer(backend, consensus, logger)
 	_ = blockSyncer
+
+	syncServer := ledger.NewBlockSyncServer(backend, logger)
+	validatorTransport := transport.NewServer(consensus, syncServer, logger)
+
+	// Register remote validator signers for configured peers.
+	for _, peer := range cfg.Ledger.PeerAddresses {
+		if peer == "" {
+			continue
+		}
+		signer := transport.NewHTTPValidatorSigner(peer + "/internal/validator")
+		consensus.RegisterSigner(peer, signer)
+		slog.Info("registered remote validator signer", "peer", peer)
+	}
 
 	slog.Info("consensus engine started", "validator_did", validatorDID, "block_interval", cfg.Ledger.BlockInterval)
 
 	// ── WebSocket ───────────────────────────────────────────────────────
 	wsHub := websocketpkg.NewHub(logger)
 	ticketAuth := websocketpkg.NewTicketAuth(rdb)
+
+	// ── Event → WebSocket Bridge ─────────────────────────────────────
+	bridge := events.NewWebSocketBridge(emitter, wsHub, logger)
+	bridge.Start()
 
 	// ── HTTP Router (chi) ───────────────────────────────────────────────
 	router := api.NewRouter(api.RouterConfig{
@@ -216,9 +236,11 @@ func run() error {
 		DIDManager:         didMgr,
 		CredentialManager:  credMgr,
 		DelegationVerifier: delegationVerifier,
+		PrincipalService:   principalSvc,
 
-		ANSManager: ansMgr,
-		WellKnown:  wellKnownSvc,
+		ANSManager:    ansMgr,
+		SearchService: searchSvc,
+		WellKnown:     wellKnownSvc,
 
 		TokenIssuer:           tokenIssuer,
 		PaymentExecutor:       paymentExecutor,
@@ -233,6 +255,8 @@ func run() error {
 		Hub:        wsHub,
 		TicketAuth: ticketAuth,
 
+		ValidatorRouter: validatorTransport.Router(),
+
 		ServiceDID:      serverDID,
 		AllowedOrigins:  cfg.Server.AllowedOrigins,
 		RateLimitMax:    cfg.Server.RateLimitMax,
@@ -243,11 +267,13 @@ func run() error {
 
 	// ── Main HTTP Server ────────────────────────────────────────────────
 	srv := &http.Server{
-		Addr:         cfg.Server.Addr(),
-		Handler:      router,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
-		IdleTimeout:  cfg.Server.IdleTimeout,
+		Addr:              cfg.Server.Addr(),
+		Handler:           router,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		ReadHeaderTimeout: 5 * time.Second, // Slowloris protection.
+		WriteTimeout:      cfg.Server.WriteTimeout,
+		IdleTimeout:       cfg.Server.IdleTimeout,
+		MaxHeaderBytes:    1 << 16, // 64KB header limit.
 	}
 
 	// ── Metrics Server ──────────────────────────────────────────────────

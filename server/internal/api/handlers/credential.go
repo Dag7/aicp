@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/aicp-protocol/aicp/server/internal/api/middleware"
+	"github.com/aicp-protocol/aicp/server/internal/crypto"
 	"github.com/aicp-protocol/aicp/server/internal/identity"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
@@ -19,7 +22,71 @@ func NewCredentialHandler(credMgr *identity.CredentialManager) *CredentialHandle
 	return &CredentialHandler{credMgr: credMgr}
 }
 
+// Issue handles POST /aicp/v1/credentials/issue — issues a verifiable credential.
+// Requires authentication: the caller must be the issuer.
+func (h *CredentialHandler) Issue(w http.ResponseWriter, r *http.Request) {
+	callerDID, _ := middleware.GetAuthDID(r.Context())
+
+	var req aicp.CredentialIssueRequest
+	if err := DecodeJSON(r, &req); err != nil {
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+
+	if req.IssuerDID == "" {
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "issuer_did is required")
+		return
+	}
+	if req.SubjectDID == "" {
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "subject_did is required")
+		return
+	}
+	if req.CredentialType == "" {
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "credential_type is required")
+		return
+	}
+
+	if !middleware.IsValidDID(req.IssuerDID) || !middleware.IsValidDID(req.SubjectDID) {
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid DID format")
+		return
+	}
+
+	// Enforce: the authenticated caller must be the issuer.
+	if callerDID != req.IssuerDID {
+		JSONError(w, http.StatusForbidden, "FORBIDDEN", "you can only issue credentials as yourself")
+		return
+	}
+
+	// Build the credential subject from the request claims.
+	subject := map[string]any{
+		"id":   req.SubjectDID,
+		"type": req.CredentialType,
+	}
+	for k, v := range req.Claims {
+		subject[k] = v
+	}
+
+	// Generate a deterministic credential ID.
+	credID := aicp.CredentialIDPrefix + crypto.SHA256Hex([]byte(fmt.Sprintf("%s:%s:%s", req.IssuerDID, req.SubjectDID, req.CredentialType)))[:16]
+
+	cred, err := h.credMgr.IssueCredential(r.Context(), identity.IssueParams{
+		CredentialID: credID,
+		Types:        []string{"VerifiableCredential", req.CredentialType},
+		IssuerDID:    req.IssuerDID,
+		Subject:      subject,
+	})
+	if err != nil {
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "credential issuance failed")
+		return
+	}
+
+	JSON(w, http.StatusCreated, aicp.CredentialIssueResponse{
+		Credential: cred,
+	})
+}
+
 // Revoke handles POST /aicp/v1/credentials/{id}/revoke.
+// Requires authentication: the caller must be the credential issuer.
 func (h *CredentialHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	credentialID := chi.URLParam(r, "id")
 	if credentialID == "" {
@@ -33,15 +100,8 @@ func (h *CredentialHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		req = aicp.CredentialRevokeRequest{}
 	}
 
-	// Revoke the credential. RevokeCredential requires a key pair for signing
-	// the revocation proof. In a full implementation, the authenticated principal's
-	// key would be extracted from the auth middleware. For now, we delegate to
-	// the credential manager which validates the issuer internally.
-	//
-	// The credential manager's RevokeCredential verifies only the issuer can revoke.
-	// We pass nil here and let the backend handle the proof-less revocation path.
 	if err := h.credMgr.RevokeCredentialByID(r.Context(), credentialID); err != nil {
-		JSONError(w, http.StatusInternalServerError, "REVOCATION_FAILED", err.Error())
+		JSONError(w, http.StatusInternalServerError, "REVOCATION_FAILED", "credential revocation failed")
 		return
 	}
 

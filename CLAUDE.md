@@ -21,10 +21,14 @@ server/          Go protocol server (chi router, PostgreSQL, Redis)
     identity/    Layer 1: DID lifecycle, credentials, delegation, revocation
     discovery/   Layer 2: ANS records, tiered resolver, search, well-known
     onboarding/  Layer 3: 4-phase state machine, sessions, challenges, trust
-    commerce/    Layer 4: Payment tokens (JWS), executor, spending, adapters
+    commerce/    Layer 4: Payment tokens (JWS), executor, spending, adapters, approvals
     ledger/      Consortium ledger: PostgreSQL backend, blocks, consensus, sync
+      transport/ HTTP-based validator-to-validator communication
     api/         HTTP router (chi), handlers, middleware, WebSocket hub
-    events/      Typed event emitter, Redis pub/sub bridge
+      handlers/  DID, discovery, onboarding, payment, approval, credential, trust, verify
+      middleware/ DID-Auth (JWS), rate limiting, CORS, metrics, logging, body limit, recovery
+      websocket/ Hub, client, ticket auth, event delivery
+    events/      Typed event emitter, Redis pub/sub bridge, WebSocket bridge
   pkg/aicp/      Public types, errors, version constants
   sqlc/          SQL queries + generated type-safe Go code
 
@@ -84,9 +88,125 @@ task helm:lint      # Lint Helm chart
 task all            # Build + test + lint everything
 ```
 
+## REST API Endpoints
+
+### Public Endpoints (no authentication)
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| GET | `/health` | HealthHandler.Health | Liveness probe |
+| GET | `/ready` | HealthHandler.Ready | Readiness probe |
+| GET | `/metrics` | promhttp | Prometheus metrics |
+| GET | `/.well-known/aicp.json` | WellKnownHandler | Service discovery metadata |
+| POST | `/aicp/v1/did` | DIDHandler.Create | Create principal DID |
+| GET | `/aicp/v1/did/{did}` | DIDHandler.Resolve | Resolve DID document |
+| GET | `/aicp/v1/discover/search` | DiscoveryHandler.Search | Search by capability |
+| GET | `/aicp/v1/discover/{did}` | DiscoveryHandler.Get | Get ANS record |
+| GET | `/aicp/v1/trust/{did}` | TrustHandler.GetScore | Get trust score |
+| POST | `/aicp/v1/onboard` | OnboardHandler.Initiate | Start onboarding |
+| POST | `/aicp/v1/onboard/{id}/negotiate` | OnboardHandler.Negotiate | Negotiate capabilities |
+| POST | `/aicp/v1/onboard/{id}/authorize` | OnboardHandler.Authorize | Authorize payment |
+| POST | `/aicp/v1/onboard/{id}/provision` | OnboardHandler.Provision | Complete onboarding |
+| POST | `/aicp/v1/verify` | VerifyHandler.Handle | Verify agent identity |
+| GET | `/aicp/v1/ws` | WebSocket upgrade | Real-time events (ticket auth) |
+
+### Authenticated Endpoints (require DID-Auth JWS Bearer token)
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| POST | `/aicp/v1/did/agent` | DIDHandler.CreateAgent | Create agent DID under principal |
+| PUT | `/aicp/v1/did/{did}` | DIDHandler.Update | Update DID document |
+| POST | `/aicp/v1/did/{did}/deactivate` | DIDHandler.Deactivate | Deactivate DID |
+| POST | `/aicp/v1/discover/register` | DiscoveryHandler.Register | Register ANS record |
+| DELETE | `/aicp/v1/discover/{did}` | DiscoveryHandler.Delete | Delete ANS record |
+| POST | `/aicp/v1/payment/token` | PaymentHandler.RequestToken | Request payment token |
+| POST | `/aicp/v1/payment/execute` | PaymentHandler.Execute | Execute payment |
+| GET | `/aicp/v1/payment/status/{id}` | PaymentHandler.Status | Check payment status |
+| GET | `/aicp/v1/payment/approval/{id}` | ApprovalHandler.GetApproval | Get approval status |
+| POST | `/aicp/v1/payment/approval/{id}/approve` | ApprovalHandler.Approve | Approve payment |
+| POST | `/aicp/v1/payment/approval/{id}/deny` | ApprovalHandler.Deny | Deny payment |
+| GET | `/aicp/v1/payment/approvals/pending` | ApprovalHandler.ListPending | List pending approvals |
+| POST | `/aicp/v1/credentials/issue` | CredentialHandler.Issue | Issue credential |
+| POST | `/aicp/v1/credentials/{id}/revoke` | CredentialHandler.Revoke | Revoke credential |
+| POST | `/aicp/v1/ws/ticket` | inline | Get WebSocket auth ticket |
+
+### Internal Endpoints (validator-to-validator, not exposed)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/internal/validator/sign` | Request block signature from peer |
+| GET | `/internal/validator/blocks` | Fetch block range from peer |
+| GET | `/internal/validator/latest` | Get latest block number |
+| GET | `/internal/validator/health` | Validator health check |
+
+## Security Architecture
+
+### Authentication
+- **DID-Auth middleware**: Parses `Authorization: Bearer <JWS>` headers
+- JWS tokens signed with EdDSA (Ed25519) via go-jose/v4
+- `kid` header contains `did:aicp:<id>#key-1`, DID extracted and stored in context
+- Handlers check `middleware.GetAuthDID(ctx)` for authenticated identity
+- Protected routes use `middleware.RequireAuth()` group middleware
+
+### Authorization
+- **Ownership enforcement**: Mutating operations verify caller DID matches the target resource
+  - DID update/deactivate: caller must be the DID or its controller
+  - Agent creation: caller must be the principal
+  - ANS register/delete: caller must own the service DID
+  - Credential issue: caller must be the issuer
+  - Approval approve/deny: caller must be the principal of the agent
+
+### Input Validation
+- **DID format validation**: `middleware.IsValidDID()` enforces `did:aicp:<base58btc>` format
+- **Body size limiting**: `middleware.BodyLimit()` caps request bodies at 1MB
+- **Pagination limits**: Max 100 results per page (`aicp.MaxPageLimit`)
+- **Query length limits**: Capability search limited to 256 chars
+
+### Rate Limiting
+- Redis-backed per-IP rate limiting via `middleware.RateLimit()`
+- Configurable max requests and window via env vars
+
+### Infrastructure Security
+- **No JSON injection**: All error responses use `json.Marshal`, never string concatenation
+- **Panic recovery**: `middleware.Recovery()` catches panics, logs stack traces
+- **WebSocket origin check**: Uses configured `AllowedOrigins` (not wildcard `*` in production)
+
+## Agent Identity Model
+
+Any framework/software (OpenClaw, Claude, Codex, custom agents) can register agent identities:
+
+```
+Human/Org → POST /aicp/v1/did → Principal DID (did:aicp:<id>)
+         → POST /aicp/v1/did/agent → Agent DID (did:aicp:<principal-id>:<agent-id>)
+                                    → Delegation credential (scopes capabilities)
+                                    → Spending authorization (limits payments)
+```
+
+Companies register the same way — they get a Principal DID and optionally publish `/.well-known/aicp.json` on their domain for DNS→DID bridging.
+
+### Agent Lifecycle
+1. **Register Principal**: Human/org creates identity (Ed25519 key pair generated server-side)
+2. **Create Agent**: Principal creates agent DID with requested capabilities
+3. **Discover Services**: Agent searches ANS for services matching needed capabilities
+4. **Onboard**: 4-phase flow (initiate → negotiate → authorize → provision)
+5. **Transact**: Payment tokens (JWS), spending limits, human approval for large amounts
+6. **Verify**: Any party can verify an agent's identity, credentials, and delegation chain
+
+## Middleware Stack
+
+Applied in order (outermost first):
+1. `Recovery` — Panic recovery with structured logging
+2. `BodyLimit` — 1MB max request body
+3. `Logging` — Structured HTTP request logging (slog)
+4. `Metrics` — Prometheus request counters and histograms
+5. `CORS` — Configurable cross-origin headers
+6. `DIDAuth` — JWS Bearer token parsing, DID extraction
+7. `RequestID` — chi request ID generation
+8. `RealIP` — X-Forwarded-For parsing
+9. `RateLimit` — Redis-backed per-IP rate limiting (conditional)
+
+Route groups add `RequireAuth()` for endpoints that require authentication.
+
 ## Development Environment (k3d + Tilt)
 
-The project uses a devcontainer with k3d (k3s-in-Docker) and Tilt for local Kubernetes development. This follows the same pattern as the doorz project.
+The project uses a devcontainer with k3d (k3s-in-Docker) and Tilt for local Kubernetes development.
 
 ### Prerequisites
 - Docker Desktop
@@ -113,6 +233,9 @@ The project uses a devcontainer with k3d (k3s-in-Docker) and Tilt for local Kube
 | `postgresql` | 01_infra | 5432 | PostgreSQL 17 with uuid-ossp + pgcrypto |
 | `redis` | 01_infra | 6379 | Redis 7 Alpine with AOF persistence |
 | `pgadmin` | 01_infra_dashboard | 5050 | pgAdmin4 (admin@aicp.dev / admin) |
+| `prometheus` | 01_infra | 9091 | Prometheus v3.2.1 scraping AICP metrics |
+| `grafana` | 01_infra_dashboard | 3000 | Grafana 11.6 with 4 AICP dashboards |
+| `ingress-routes` | 01_infra | - | Traefik ingress (*.localhost:8081) |
 | `db-migrate` | 00_setup | - | golang-migrate runs schema migrations |
 | `aicp-server` | 00_server | 8080, 9090 | AICP protocol server (Helm chart) |
 | `operator-crds` | 00_operator | - | AICPCluster + AICPValidator CRDs |
@@ -133,13 +256,22 @@ The project uses a devcontainer with k3d (k3s-in-Docker) and Tilt for local Kube
 ./scripts/setup-k3d-kubectl.sh
 ```
 
-### Key Dev URLs
+### Key Dev URLs (Traefik Ingress — port 8081)
 
-- **AICP Server**: http://localhost:8080
-- **Metrics**: http://localhost:9090/metrics
-- **Health**: http://localhost:8080/health
-- **pgAdmin**: http://localhost:5050
-- **Tilt Dashboard**: http://localhost:10350
+| Service | Ingress URL | Port Forward |
+|---------|-------------|--------------|
+| **AICP Server** | http://aicp.localhost:8081 | http://localhost:8080 |
+| **Grafana** | http://grafana.localhost:8081 | http://localhost:3000 |
+| **pgAdmin** | http://pgadmin.localhost:8081 | http://localhost:5050 |
+| **Prometheus** | http://prometheus.localhost:8081 | http://localhost:9091 |
+| **Metrics** | http://metrics.localhost:8081/metrics | http://localhost:9090/metrics |
+| **Tilt Dashboard** | http://localhost:10350 | — |
+
+Grafana dashboards (auto-provisioned in AICP folder):
+- **AICP Overview**: Request rate, latency percentiles, error rate, uptime, memory
+- **Identity & Onboarding**: DID ops, credential lifecycle, onboarding phases, trust scores
+- **Commerce**: Payment tokens, execution, revenue by adapter, spending limits
+- **ANS Performance**: Resolution rate, search latency, cache hit ratio, top services
 
 ### Dev Environment Architecture
 
@@ -151,11 +283,15 @@ The project uses a devcontainer with k3d (k3s-in-Docker) and Tilt for local Kube
   k3s/               Cluster config, registries, stop/clean scripts
 
 k8s/deployment/infra/local/
-  namespace.yaml     aicp namespace
-  postgresql.yaml    PG 17 Deployment + PVC + init SQL + Service
-  redis.yaml         Redis 7 Deployment + PVC + Service
-  pgadmin.yaml       pgAdmin4 with pre-configured AICP connection
-  Tiltfile           Local infra orchestration (loaded by root Tiltfile)
+  namespace.yaml              aicp namespace
+  postgresql.yaml             PG 17 Deployment + PVC + init SQL + Service
+  redis.yaml                  Redis 7 Deployment + PVC + Service
+  pgadmin.yaml                pgAdmin4 with pre-configured AICP connection
+  prometheus.yaml             Prometheus v3.2.1 scraping aicp-server metrics
+  grafana.yaml                Grafana 11.6 with datasource + dashboard provisioning
+  grafana-dashboards.yaml     ConfigMap with 4 dashboard JSONs (from deploy/grafana/dashboards/)
+  ingress.yaml                Traefik Ingress routes (*.localhost:8081)
+  Tiltfile                    Local infra orchestration (loaded by root Tiltfile)
 
 utils/tilt/
   go.utils.tilt      Go Docker build helper
@@ -214,7 +350,8 @@ IDs are base58btc-encoded truncated SHA-256 (first 16 bytes) of the public key.
 ### Consortium Ledger
 - Append-only blocks with Merkle roots on PostgreSQL
 - Multi-node consensus: round-robin leader, 2f+1 validator signatures
-- Block sync via gRPC between validators
+- Block sync via HTTP transport between validators (`server/internal/ledger/transport/`)
+- Validator transport mounted at `/internal/validator` (sign, blocks, latest, health)
 
 ### CLI (`server/cmd/aicp/`)
 - Built with cobra for subcommand structure
@@ -231,3 +368,19 @@ IDs are base58btc-encoded truncated SHA-256 (first 16 bytes) of the public key.
 - LedgerBackend interface is the single abstraction for all storage (DID, cred, receipt, block, trust, ANS)
 - PostgresBackend implements LedgerBackend with compile-time check: `var _ LedgerBackend = (*PostgresBackend)(nil)`
 - WebSocket uses ticket-based auth: POST /ws/ticket → GET /ws?ticket=<ticket>
+- Events bridge: `events.WebSocketBridge` subscribes to emitter and forwards to WebSocket hub
+- Human approval: `commerce.ApprovalService` with Redis-backed storage, 15min TTL, event emission
+- Capability enforcement: `identity.CapabilityEnforcer` validates agent delegation credentials
+
+### Observability
+- Prometheus metrics under `aicp_` prefix on metrics port (default 9090)
+- 4 Grafana dashboards in `deploy/grafana/dashboards/`: overview, identity-onboarding, commerce, ans-performance
+- Local K8s: dashboards embedded in `k8s/deployment/infra/local/grafana-dashboards.yaml` ConfigMap
+- Structured JSON logging via `log/slog` with correlation IDs
+
+### Documentation
+- Protocol paper: `docs/paper/AICP_Protocol_Paper_v2.0.html` (17-section publication with SVG diagrams)
+- Architecture: `docs/architecture.md`
+- Development: `docs/development.md`
+- Deployment: `docs/deployment.md`
+- Protocol spec: `docs/spec/` (layer-by-layer specifications)

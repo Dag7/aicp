@@ -643,3 +643,83 @@ type FinalizedBlock struct {
 	Block      Block          `json:"block"`
 	Signatures []ValidatorSig `json:"signatures"`
 }
+
+// ─── DID API Types ──────────────────────────────────────────────────────────
+
+// DIDCreateRequest is the body of POST /aicp/v1/did.
+type DIDCreateRequest struct {
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+// DIDCreateResponse is returned from POST /aicp/v1/did.
+type DIDCreateResponse struct {
+	DID           string          `json:"did"`
+	PublicKey     string          `json:"public_key"`
+	Document      *DIDDocument    `json:"document"`
+	AnchorReceipt *AnchorReceipt  `json:"anchor_receipt"`
+}
+
+// DIDCreateAgentRequest is the body of POST /aicp/v1/did/agent.
+type DIDCreateAgentRequest struct {
+	PrincipalDID string               `json:"principal_did"`
+	Capabilities []string             `json:"capabilities"`
+	Constraints  DelegationConstraints `json:"constraints"`
+}
+
+// DIDCreateAgentResponse is returned from POST /aicp/v1/did/agent.
+type DIDCreateAgentResponse struct {
+	AgentDID      string          `json:"agent_did"`
+	PublicKey     string          `json:"public_key"`
+	Document      *DIDDocument    `json:"document"`
+	AnchorReceipt *AnchorReceipt  `json:"anchor_receipt"`
+}
+
+// DIDUpdateRequest is the body of PUT /aicp/v1/did/{did}.
+type DIDUpdateRequest struct {
+	Service            []ServiceEndpoint    `json:"service,omitempty"`
+	VerificationMethod []VerificationMethod `json:"verificationMethod,omitempty"`
+}
+
+// DIDDeactivateRequest is the body of POST /aicp/v1/did/{did}/deactivate.
+type DIDDeactivateRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// ─── Discovery API Types ────────────────────────────────────────────────────
+
+// DiscoveryRegisterRequest is the body of POST /aicp/v1/discover/register.
+type DiscoveryRegisterRequest struct {
+	ANSRecord
+}
+
+// DiscoverySearchResponse is returned from GET /aicp/v1/discover/search.
+type DiscoverySearchResponse struct {
+	Items      []ANSRecord `json:"items"`
+	NextCursor string      `json:"next_cursor,omitempty"`
+	HasMore    bool        `json:"has_more"`
+}
+
+// ─── Credential Issuance API Types ──────────────────────────────────────────
+
+// CredentialIssueRequest is the body of POST /aicp/v1/credentials/issue.
+type CredentialIssueRequest struct {
+	IssuerDID      string            `json:"issuer_did"`
+	SubjectDID     string            `json:"subject_did"`
+	CredentialType string            `json:"credential_type"`
+	Claims         map[string]any    `json:"claims"`
+}
+
+// CredentialIssueResponse is returned from POST /aicp/v1/credentials/issue.
+type CredentialIssueResponse struct {
+	Credential *VerifiableCredential `json:"credential"`
+}
+
+// ─── Trust API Types ────────────────────────────────────────────────────────
+
+// TrustScoreResponse is returned from GET /aicp/v1/trust/{did}.
+type TrustScoreResponse struct {
+	DID        string              `json:"did"`
+	Score      int                 `json:"score"`
+	Components TrustScoreBreakdown `json:"components"`
+	ComputedAt time.Time           `json:"computed_at"`
+}

@@ -14,6 +14,9 @@ Host (macOS/Linux)
         │     │     ├── postgresql
         │     │     ├── redis
         │     │     ├── pgadmin
+        │     │     ├── prometheus
+        │     │     ├── grafana (4 AICP dashboards)
+        │     │     ├── ingress-routes (Traefik *.localhost:8081)
         │     │     └── aicp-server
         │     └── aicp-operator-system namespace
         │           └── aicp-operator-controller-manager
@@ -61,13 +64,29 @@ Tilt deploys everything and opens a dashboard at http://localhost:10350.
 
 ## Services and Ports
 
+### Traefik Ingress (port 8081)
+
+k3d maps host port 8081 to Traefik's loadbalancer. All services are accessible via subdomain routing:
+
+| Service | Ingress URL |
+|---------|-------------|
+| AICP Server | http://aicp.localhost:8081 |
+| Grafana | http://grafana.localhost:8081 |
+| pgAdmin | http://pgadmin.localhost:8081 |
+| Prometheus | http://prometheus.localhost:8081 |
+| Metrics | http://metrics.localhost:8081/metrics |
+
+### Port Forwards (direct access)
+
 | Service | Port | URL |
 |---------|------|-----|
 | AICP Server | 8080 | http://localhost:8080 |
-| Metrics (Prometheus) | 9090 | http://localhost:9090/metrics |
+| Metrics | 9090 | http://localhost:9090/metrics |
 | PostgreSQL | 5432 | `postgres://aicp:aicp_dev@localhost:5432/aicp` |
 | Redis | 6379 | `redis://localhost:6379` |
 | pgAdmin | 5050 | http://localhost:5050 |
+| Prometheus | 9091 | http://localhost:9091 |
+| Grafana | 3000 | http://localhost:3000 |
 | Tilt Dashboard | 10350 | http://localhost:10350 |
 | k3d Registry | 5005 | `localhost:5005` |
 
@@ -140,14 +159,16 @@ Tiltfile                              # Root orchestrator
   ├── utils/tilt/k8s/helm.utils.tilt  # Helm dependency management
   ├── utils/tilt/k8s/pvc.utils.tilt   # PVC finalizer cleanup
   ├── utils/tilt/k8s/namespace.utils.tilt
-  ├── k8s/deployment/infra/local/Tiltfile   # PostgreSQL, Redis, pgAdmin
+  ├── k8s/deployment/infra/local/Tiltfile   # PG, Redis, pgAdmin, Prometheus, Grafana, Ingress
   └── deploy/helm/aicp/Tiltfile             # Server Helm chart setup
 ```
 
 Key patterns:
+- **Static YAML manifests**: All infra resources are plain `k8s_yaml()` calls to static YAML files — no runtime generation
 - **Per-chart Tiltfile**: Each Helm chart exports a `setup_*()` function
 - **Kustomize for operator**: Uses `operator/config/default` which properly namespaces all resources
 - **PVC cleanup**: Manual `local_resource` (trigger from Tilt UI) that patches finalizers
+- **Grafana dashboards**: JSON files in `deploy/grafana/dashboards/` are embedded in a static ConfigMap YAML (`k8s/deployment/infra/local/grafana-dashboards.yaml`)
 
 ## Devcontainer Details
 

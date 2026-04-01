@@ -49,7 +49,10 @@ const (
 )
 
 // Pagination defaults.
-const DefaultPageLimit = 20
+const (
+	DefaultPageLimit = 20
+	MaxPageLimit     = 100
+)
 
 // Trust score constants.
 const MaxTrustScore = 1000

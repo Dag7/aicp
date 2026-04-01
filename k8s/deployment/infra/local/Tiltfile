@@ -33,3 +33,44 @@ def setup_local_infra():
         resource_deps=['postgresql'],
         labels=['01_infra_dashboard'],
     )
+
+    # Prometheus
+    k8s_yaml('k8s/deployment/infra/local/prometheus.yaml')
+    k8s_resource('prometheus',
+        objects=['prometheus-config:configmap', 'prometheus-data:persistentvolumeclaim'],
+        port_forwards=['9091:9090'],
+        labels=['01_infra'],
+    )
+    clear_pvc('prometheus-data', 'aicp')
+
+    # Grafana dashboards ConfigMap (source: deploy/grafana/dashboards/*.json)
+    k8s_yaml('k8s/deployment/infra/local/grafana-dashboards.yaml')
+
+    # Grafana
+    k8s_yaml('k8s/deployment/infra/local/grafana.yaml')
+    k8s_resource('grafana',
+        objects=[
+            'grafana-datasources:configmap',
+            'grafana-dashboard-provisioning:configmap',
+            'grafana-dashboards:configmap',
+        ],
+        port_forwards=['3000:3000'],
+        resource_deps=['prometheus'],
+        labels=['01_infra_dashboard'],
+    )
+
+    # Traefik Ingress routes (*.localhost:8081 → services)
+    # grafana.localhost:8081, pgadmin.localhost:8081, prometheus.localhost:8081,
+    # aicp.localhost:8081, metrics.localhost:8081
+    k8s_yaml('k8s/deployment/infra/local/ingress.yaml')
+    k8s_resource(
+        new_name='ingress-routes',
+        objects=[
+            'grafana-ingress:ingress',
+            'pgadmin-ingress:ingress',
+            'prometheus-ingress:ingress',
+            'aicp-server-ingress:ingress',
+        ],
+        resource_deps=['grafana', 'pgadmin', 'prometheus'],
+        labels=['01_infra'],
+    )

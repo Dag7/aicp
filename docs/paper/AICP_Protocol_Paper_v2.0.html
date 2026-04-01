@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AICP: Agentic Identity and Commerce Protocol — Technical Specification &amp; Architecture Paper v2.0</title>
+<meta name="description" content="A unified open-source protocol providing autonomous AI agents with cryptographic identity, service discovery, standardized onboarding, and provider-agnostic commerce capabilities.">
+<meta name="keywords" content="AICP, AI agents, decentralized identity, DID, verifiable credentials, agent commerce, protocol, onboarding, service discovery">
+<meta name="author" content="AICP Protocol Team">
+<style>
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --bg-code: #1c2128;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent-blue: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-purple: #bc8cff;
+  --accent-orange: #d29922;
+  --accent-red: #f85149;
+  --accent-cyan: #39d2c0;
+  --border-primary: #30363d;
+  --border-secondary: #21262d;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  --max-width: 920px;
+  --diagram-bg: #0d1117;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { font-size: 17px; scroll-behavior: smooth; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+
+/* Header */
+.paper-header {
+  text-align: center;
+  padding: 4rem 2rem 3rem;
+  border-bottom: 1px solid var(--border-primary);
+  background: linear-gradient(180deg, #0d1117 0%, #111820 100%);
+}
+.paper-header h1 {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.paper-header .subtitle {
+  font-size: 1.15rem;
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  font-weight: 400;
+}
+.paper-header .meta {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+.paper-header .version-badge {
+  display: inline-block;
+  background: var(--bg-tertiary);
+  color: var(--accent-green);
+  padding: 0.2rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid var(--border-primary);
+  margin-bottom: 1rem;
+}
+
+/* Table of Contents */
+.toc {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 1.5rem 2rem;
+  margin: 2rem 0;
+}
+.toc h2 { font-size: 1.1rem; color: var(--accent-blue); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.toc ol { padding-left: 1.25rem; }
+.toc li { margin: 0.35rem 0; }
+.toc a { color: var(--text-secondary); text-decoration: none; font-size: 0.92rem; transition: color 0.2s; }
+.toc a:hover { color: var(--accent-blue); }
+
+/* Sections */
+section { margin: 3rem 0; }
+h2 {
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--border-primary);
+  letter-spacing: -0.02em;
+}
+h2 .section-num { color: var(--accent-blue); margin-right: 0.5rem; }
+h3 { font-size: 1.2rem; font-weight: 600; color: var(--text-primary); margin: 1.75rem 0 0.75rem; }
+h4 { font-size: 1.02rem; font-weight: 600; color: var(--accent-purple); margin: 1.25rem 0 0.5rem; }
+p { margin-bottom: 1rem; color: var(--text-primary); }
+
+/* Lists */
+ul, ol { margin: 0.75rem 0 1rem 1.5rem; }
+li { margin: 0.3rem 0; color: var(--text-primary); }
+
+/* Code */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--bg-code);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: var(--accent-cyan);
+}
+pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 1.25rem;
+  overflow-x: auto;
+  margin: 1rem 0 1.5rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+pre code { background: none; padding: 0; color: var(--text-primary); }
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0 1.5rem;
+  font-size: 0.92rem;
+}
+th {
+  background: var(--bg-tertiary);
+  color: var(--accent-blue);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-primary);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+td {
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+}
+tr:nth-child(even) { background: var(--bg-secondary); }
+
+/* Diagram containers */
+.diagram {
+  background: var(--diagram-bg);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  text-align: center;
+  overflow-x: auto;
+}
+.diagram-caption {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 0.75rem;
+  font-style: italic;
+}
+
+/* Callout boxes */
+.callout {
+  border-left: 3px solid var(--accent-blue);
+  background: var(--bg-secondary);
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+  border-radius: 0 6px 6px 0;
+}
+.callout.warning { border-left-color: var(--accent-orange); }
+.callout.success { border-left-color: var(--accent-green); }
+.callout p { margin-bottom: 0.5rem; }
+.callout p:last-child { margin-bottom: 0; }
+.callout strong { color: var(--accent-blue); }
+.callout.warning strong { color: var(--accent-orange); }
+
+/* Highlight spans */
+.hl-blue { color: var(--accent-blue); font-weight: 600; }
+.hl-green { color: var(--accent-green); font-weight: 600; }
+.hl-purple { color: var(--accent-purple); font-weight: 600; }
+.hl-orange { color: var(--accent-orange); font-weight: 600; }
+
+/* Footer */
+.paper-footer {
+  text-align: center;
+  padding: 2rem;
+  margin-top: 3rem;
+  border-top: 1px solid var(--border-primary);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Print */
+@media print {
+  body { background: white; color: #1a1a1a; font-size: 11pt; }
+  .container { max-width: 100%; padding: 0; }
+  .paper-header { background: none; border-bottom: 2px solid #333; }
+  .paper-header h1 { background: none; -webkit-text-fill-color: #1a1a1a; color: #1a1a1a; }
+  h2 { page-break-after: avoid; }
+  pre, .diagram { page-break-inside: avoid; }
+  .toc { page-break-after: always; }
+  code { background: #f0f0f0; }
+  th { background: #e0e0e0; }
+  a { color: #1a1a1a; text-decoration: underline; }
+}
+@media (max-width: 768px) {
+  html { font-size: 15px; }
+  .paper-header h1 { font-size: 1.8rem; }
+  .container { padding: 1rem; }
+  pre { font-size: 0.8rem; padding: 0.75rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- HEADER                                                        -->
+<!-- ============================================================ -->
+<header class="paper-header">
+  <span class="version-badge">v2.0 &mdash; April 2026</span>
+  <h1>AICP: Agentic Identity and Commerce Protocol</h1>
+  <p class="subtitle">A Unified Protocol for Autonomous AI Agent Identity, Discovery, Onboarding, and Commerce</p>
+  <div class="meta">
+    <strong>Technical Specification &amp; Architecture Paper</strong><br>
+    AICP Protocol Team &bull; Apache 2.0 License<br>
+    Published: April 2026 &bull; Protocol Version 1.0
+  </div>
+</header>
+
+<div class="container">
+
+<!-- ============================================================ -->
+<!-- TABLE OF CONTENTS                                             -->
+<!-- ============================================================ -->
+<nav class="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#abstract">Abstract</a></li>
+    <li><a href="#introduction">Introduction &amp; Motivation</a></li>
+    <li><a href="#problem">Problem Statement</a></li>
+    <li><a href="#architecture">Protocol Architecture</a></li>
+    <li><a href="#identity">Layer 1: Identity</a></li>
+    <li><a href="#discovery">Layer 2: Discovery (ANS)</a></li>
+    <li><a href="#onboarding">Layer 3: Onboarding</a></li>
+    <li><a href="#commerce">Layer 4: Commerce</a></li>
+    <li><a href="#ledger">Consortium Ledger &amp; Consensus</a></li>
+    <li><a href="#trust">Trust Framework</a></li>
+    <li><a href="#events">Real-Time Event System</a></li>
+    <li><a href="#security">Security Considerations</a></li>
+    <li><a href="#implementation">Implementation &amp; Technology</a></li>
+    <li><a href="#comparison">Protocol Comparison</a></li>
+    <li><a href="#future">Future Work &amp; Roadmap</a></li>
+    <li><a href="#conclusion">Conclusion</a></li>
+    <li><a href="#references">References</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<!-- 1. ABSTRACT                                                   -->
+<!-- ============================================================ -->
+<section id="abstract">
+  <h2><span class="section-num">1.</span> Abstract</h2>
+  <p>
+    The rapid proliferation of autonomous AI agents — systems capable of independently discovering services,
+    negotiating terms, and executing transactions — has exposed a critical infrastructure gap. While protocols
+    such as the Model Context Protocol (MCP), Agent-to-Agent (A2A), and Agent Communication Protocol (ACP)
+    address tool integration and inter-agent messaging, none provides the foundational layer that every
+    autonomous agent requires: <em>verifiable identity anchored to a responsible human or organization,
+    decentralized service discovery, standardized onboarding, and provider-agnostic payment capabilities</em>.
+  </p>
+  <p>
+    The <strong>Agentic Identity and Commerce Protocol (AICP)</strong> fills this gap with a four-layer
+    protocol stack built on W3C Decentralized Identifiers (DIDs), Verifiable Credentials (VCs), a custom
+    Agent Name System (ANS), a four-phase onboarding state machine, and a cryptographic payment token
+    framework supporting Stripe, PayPal, and USDC. AICP operates as complementary infrastructure — it does
+    not replace MCP, A2A, or ACP, but provides the identity and commerce substrate they lack.
+  </p>
+  <p>
+    This paper presents the complete technical specification, architecture, and reference implementation of
+    AICP v1.0. The protocol is implemented as a production-grade Go server backed by PostgreSQL and Redis,
+    with client SDKs in TypeScript and Python, a Kubernetes operator for consortium ledger management, and
+    comprehensive deployment tooling via Helm charts, Grafana dashboards, and Prometheus observability.
+    All components are open source under the Apache 2.0 license.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 2. INTRODUCTION                                               -->
+<!-- ============================================================ -->
+<section id="introduction">
+  <h2><span class="section-num">2.</span> Introduction &amp; Motivation</h2>
+  <p>
+    The AI ecosystem is evolving from isolated model inference toward networks of autonomous agents that
+    perform real-world tasks: booking travel, managing cloud infrastructure, executing financial
+    transactions, and coordinating with other agents. This evolution demands infrastructure that the
+    current landscape does not provide.
+  </p>
+
+  <h3>2.1 The Agent Autonomy Gap</h3>
+  <p>
+    Today's AI agents operate in a fragmented environment. Each service provider implements bespoke
+    authentication, proprietary onboarding flows, and siloed payment mechanisms. An agent that needs to
+    interact with ten services must navigate ten different identity systems, ten onboarding processes, and
+    ten payment integrations. This fragmentation creates several critical problems:
+  </p>
+  <ul>
+    <li><strong>No verifiable identity:</strong> Agents cannot prove who they are or who authorized them. API keys are bearer tokens with no cryptographic binding to a responsible entity.</li>
+    <li><strong>No accountability chain:</strong> When an agent performs a harmful action, there is no standardized way to trace it back to the human or organization that deployed it.</li>
+    <li><strong>No discovery mechanism:</strong> Agents cannot programmatically find services that match their capabilities. Discovery relies on hardcoded URLs or human-curated directories.</li>
+    <li><strong>No universal onboarding:</strong> Every service implements its own registration flow. An agent cannot autonomously sign up for a new service without custom integration code.</li>
+    <li><strong>No payment abstraction:</strong> Agents lack a standardized way to authorize, execute, and verify payments across different providers and currencies.</li>
+  </ul>
+
+  <h3>2.2 Why Existing Protocols Are Insufficient</h3>
+  <p>
+    The emerging agent protocol landscape addresses parts of this problem but leaves the foundational
+    layers unaddressed:
+  </p>
+  <ul>
+    <li><strong>Model Context Protocol (MCP)</strong> by Anthropic standardizes how agents access tools and context through a structured interface. However, MCP assumes the agent already has identity, already has access, and already has payment capability. It is a tool-use protocol, not an identity or commerce protocol.</li>
+    <li><strong>Agent-to-Agent (A2A)</strong> by Google defines how agents communicate and delegate tasks to each other. A2A handles agent-to-agent messaging but does not address how an agent proves its identity to a service, how it gets onboarded, or how it pays for access.</li>
+    <li><strong>Agent Communication Protocol (ACP)</strong> focuses on multi-agent orchestration and workflow coordination. Like A2A, it operates at the communication layer and assumes identity and payment are solved elsewhere.</li>
+  </ul>
+
+  <div class="callout">
+    <p><strong>AICP's Position:</strong> AICP is not a competitor to MCP, A2A, or ACP. It is the
+    <em>infrastructure layer beneath them</em>. An agent uses AICP to establish identity, discover
+    services, onboard, and set up payment — then uses MCP to access tools, A2A to coordinate with
+    other agents, and ACP for multi-agent workflows. AICP provides the "plumbing" that makes
+    autonomous agent operation possible.</p>
+  </div>
+
+  <h3>2.3 Design Goals</h3>
+  <p>AICP is designed around six core principles:</p>
+  <ol>
+    <li><strong>Principal Accountability:</strong> Every agent action traces to a verified human or organization through cryptographic delegation chains.</li>
+    <li><strong>Agent Autonomy:</strong> Within delegated boundaries, agents operate independently — discovering services, negotiating terms, and executing transactions without human intervention.</li>
+    <li><strong>Provider Agnosticism:</strong> The protocol abstracts over payment providers (Stripe, PayPal, USDC), identity methods, and deployment platforms.</li>
+    <li><strong>Protocol Complementarity:</strong> AICP integrates with existing agent protocols rather than replacing them.</li>
+    <li><strong>Decentralized Trust:</strong> A consortium ledger with multi-validator consensus eliminates single points of failure and vendor lock-in.</li>
+    <li><strong>Production Readiness:</strong> Every protocol component has a reference implementation that is deployable, observable, and scalable.</li>
+  </ol>
+</section>
+
+<!-- ============================================================ -->
+<!-- 3. PROBLEM STATEMENT                                          -->
+<!-- ============================================================ -->
+<section id="problem">
+  <h2><span class="section-num">3.</span> Problem Statement</h2>
+  <p>
+    Consider a concrete scenario: an AI assistant agent needs to autonomously purchase cloud compute
+    from a provider it has never interacted with before. Today, this requires:
+  </p>
+  <ol>
+    <li>A human to manually create an account on the cloud provider's website.</li>
+    <li>A human to enter payment information and agree to terms of service.</li>
+    <li>A human to generate API credentials and configure them in the agent.</li>
+    <li>Custom integration code for that specific provider's API.</li>
+    <li>Manual monitoring of spending and credential rotation.</li>
+  </ol>
+  <p>
+    With AICP, this becomes a five-call automated flow:
+  </p>
+  <pre><code>// 1. Agent discovers the compute service via ANS
+const service = await agent.discover("cloud-compute");
+
+// 2. Agent initiates onboarding (presents DID + credentials)
+const session = await agent.onboard(service.did);
+
+// 3. Capabilities are negotiated (compute tier, rate limits)
+await session.negotiate({ tier: "standard", capabilities: ["vm.create"] });
+
+// 4. Payment is authorized (delegation credential scopes spending)
+await session.authorize({ paymentMethod: "stripe" });
+
+// 5. Account is provisioned (agent receives service credentials)
+const account = await session.provision();</code></pre>
+  <p>
+    The agent never leaves the protocol. Identity verification, trust assessment, capability negotiation,
+    payment authorization, and account provisioning all happen through standardized AICP endpoints. The
+    human principal who deployed the agent defined the spending limits, allowed service categories, and
+    trust thresholds in advance through delegation credentials.
+  </p>
+
+  <h3>3.1 Requirements</h3>
+  <p>From this analysis, AICP must satisfy the following requirements:</p>
+  <table>
+    <tr><th>ID</th><th>Requirement</th><th>Layer</th></tr>
+    <tr><td>R1</td><td>Cryptographic identity for agents anchored to human/org principals</td><td>Identity</td></tr>
+    <tr><td>R2</td><td>Verifiable delegation chains with scoped capabilities</td><td>Identity</td></tr>
+    <tr><td>R3</td><td>Credential issuance, verification, and revocation</td><td>Identity</td></tr>
+    <tr><td>R4</td><td>Decentralized, searchable service registry</td><td>Discovery</td></tr>
+    <tr><td>R5</td><td>Standardized multi-phase onboarding with trust assessment</td><td>Onboarding</td></tr>
+    <tr><td>R6</td><td>Provider-agnostic payment tokens with spending controls</td><td>Commerce</td></tr>
+    <tr><td>R7</td><td>Cryptographic payment receipts for audit</td><td>Commerce</td></tr>
+    <tr><td>R8</td><td>Real-time event notifications (credential revocation, payments)</td><td>Cross-cutting</td></tr>
+    <tr><td>R9</td><td>Append-only ledger for DID anchoring and receipt storage</td><td>Infrastructure</td></tr>
+    <tr><td>R10</td><td>Composite trust scoring with transparent components</td><td>Cross-cutting</td></tr>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<!-- 4. PROTOCOL ARCHITECTURE                                      -->
+<!-- ============================================================ -->
+<section id="architecture">
+  <h2><span class="section-num">4.</span> Protocol Architecture</h2>
+  <p>
+    AICP is organized as a four-layer protocol stack, where each layer builds on the capabilities of the
+    layer below it. Cross-cutting concerns — the consortium ledger, trust framework, and event system —
+    span all layers.
+  </p>
+
+  <!-- DIAGRAM: Protocol Stack -->
+  <div class="diagram">
+    <svg viewBox="0 0 800 520" xmlns="http://www.w3.org/2000/svg" style="max-width:720px;width:100%">
+      <defs>
+        <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#58a6ff;stop-opacity:0.15"/>
+          <stop offset="100%" style="stop-color:#bc8cff;stop-opacity:0.15"/>
+        </linearGradient>
+        <linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#3fb950;stop-opacity:0.15"/>
+          <stop offset="100%" style="stop-color:#58a6ff;stop-opacity:0.15"/>
+        </linearGradient>
+        <linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#d29922;stop-opacity:0.15"/>
+          <stop offset="100%" style="stop-color:#3fb950;stop-opacity:0.15"/>
+        </linearGradient>
+        <linearGradient id="g4" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#f85149;stop-opacity:0.15"/>
+          <stop offset="100%" style="stop-color:#d29922;stop-opacity:0.15"/>
+        </linearGradient>
+        <linearGradient id="gside" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#39d2c0;stop-opacity:0.12"/>
+          <stop offset="100%" style="stop-color:#39d2c0;stop-opacity:0.06"/>
+        </linearGradient>
+      </defs>
+      <!-- External protocols at top -->
+      <rect x="100" y="10" width="520" height="42" rx="6" fill="none" stroke="#6e7681" stroke-dasharray="6,4"/>
+      <text x="360" y="36" text-anchor="middle" fill="#8b949e" font-size="13" font-family="Inter,sans-serif">External Protocols: MCP &bull; A2A &bull; ACP &bull; OpenID Connect</text>
+      <!-- Layer 4: Commerce -->
+      <rect x="100" y="70" width="520" height="80" rx="8" fill="url(#g1)" stroke="#bc8cff" stroke-width="1.5"/>
+      <text x="120" y="100" fill="#bc8cff" font-size="12" font-weight="700" font-family="Inter,sans-serif">LAYER 4</text>
+      <text x="120" y="120" fill="#e6edf3" font-size="16" font-weight="700" font-family="Inter,sans-serif">Commerce</text>
+      <text x="120" y="140" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">Payment Tokens (JWS) &bull; Spending Limits &bull; Adapters (Stripe/PayPal/USDC) &bull; Receipts</text>
+      <!-- Layer 3: Onboarding -->
+      <rect x="100" y="160" width="520" height="80" rx="8" fill="url(#g2)" stroke="#3fb950" stroke-width="1.5"/>
+      <text x="120" y="190" fill="#3fb950" font-size="12" font-weight="700" font-family="Inter,sans-serif">LAYER 3</text>
+      <text x="120" y="210" fill="#e6edf3" font-size="16" font-weight="700" font-family="Inter,sans-serif">Onboarding</text>
+      <text x="120" y="230" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">4-Phase State Machine &bull; DID-Auth Challenge &bull; Capability Negotiation &bull; Provisioning</text>
+      <!-- Layer 2: Discovery -->
+      <rect x="100" y="250" width="520" height="80" rx="8" fill="url(#g3)" stroke="#d29922" stroke-width="1.5"/>
+      <text x="120" y="280" fill="#d29922" font-size="12" font-weight="700" font-family="Inter,sans-serif">LAYER 2</text>
+      <text x="120" y="300" fill="#e6edf3" font-size="16" font-weight="700" font-family="Inter,sans-serif">Discovery (ANS)</text>
+      <text x="120" y="320" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">Agent Name System &bull; Full-Text Search &bull; .well-known/aicp.json &bull; Trust Ranking</text>
+      <!-- Layer 1: Identity -->
+      <rect x="100" y="340" width="520" height="80" rx="8" fill="url(#g4)" stroke="#f85149" stroke-width="1.5"/>
+      <text x="120" y="370" fill="#f85149" font-size="12" font-weight="700" font-family="Inter,sans-serif">LAYER 1</text>
+      <text x="120" y="390" fill="#e6edf3" font-size="16" font-weight="700" font-family="Inter,sans-serif">Identity</text>
+      <text x="120" y="410" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">DID:AICP Method &bull; Ed25519 Keys &bull; Verifiable Credentials &bull; Delegation Chains</text>
+      <!-- Infrastructure -->
+      <rect x="100" y="438" width="520" height="55" rx="8" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+      <text x="360" y="465" text-anchor="middle" fill="#6e7681" font-size="12" font-family="Inter,sans-serif">Infrastructure: PostgreSQL &bull; Redis &bull; Go Runtime &bull; Kubernetes</text>
+      <text x="360" y="482" text-anchor="middle" fill="#6e7681" font-size="11" font-family="Inter,sans-serif">HTTP/REST &bull; WebSocket &bull; gRPC (validator sync)</text>
+      <!-- Side: Cross-cutting -->
+      <rect x="640" y="70" width="140" height="350" rx="8" fill="url(#gside)" stroke="#39d2c0" stroke-width="1.5"/>
+      <text x="710" y="140" text-anchor="middle" fill="#39d2c0" font-size="12" font-weight="700" font-family="Inter,sans-serif" transform="rotate(-90,710,140)">CROSS-CUTTING</text>
+      <text x="710" y="200" text-anchor="middle" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">Consortium</text>
+      <text x="710" y="216" text-anchor="middle" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">Ledger</text>
+      <text x="710" y="260" text-anchor="middle" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">Trust</text>
+      <text x="710" y="276" text-anchor="middle" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">Framework</text>
+      <text x="710" y="320" text-anchor="middle" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">Event</text>
+      <text x="710" y="336" text-anchor="middle" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">System</text>
+      <text x="710" y="380" text-anchor="middle" fill="#8b949e" font-size="11" font-family="Inter,sans-serif">Observability</text>
+      <!-- Arrows connecting side to layers -->
+      <line x1="630" y1="110" x2="640" y2="110" stroke="#39d2c0" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="630" y1="200" x2="640" y2="200" stroke="#39d2c0" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="630" y1="290" x2="640" y2="290" stroke="#39d2c0" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="630" y1="380" x2="640" y2="380" stroke="#39d2c0" stroke-width="1" stroke-dasharray="3,3"/>
+    </svg>
+    <div class="diagram-caption">Figure 1: AICP Four-Layer Protocol Stack with Cross-Cutting Concerns</div>
+  </div>
+
+  <h3>4.1 Transport &amp; Wire Format</h3>
+  <p>
+    AICP communicates over <strong>HTTP/1.1 and HTTP/2</strong> with JSON as the wire format. All endpoints
+    follow REST semantics under the base path <code>/aicp/v1/</code>. Real-time events are delivered over
+    <strong>WebSocket</strong> connections authenticated via one-time tickets. Inter-validator block
+    synchronization uses <strong>gRPC</strong> for efficient binary streaming.
+  </p>
+  <p>All responses are wrapped in a standardized envelope:</p>
+  <pre><code>// Success response
+{
+  "data": { /* payload */ },
+  "meta": { "requestId": "...", "timestamp": "..." }
+}
+
+// Error response
+{
+  "error": {
+    "code": "SPENDING_LIMIT_EXCEEDED",
+    "message": "Daily spending limit of $100.00 exceeded",
+    "detail": "Current daily spend: $97.50, requested: $15.00"
+  }
+}</code></pre>
+
+  <h3>4.2 Authentication</h3>
+  <p>
+    Authenticated endpoints use <strong>DID-Auth</strong>, where the caller includes an
+    <code>Authorization</code> header containing a DID and an Ed25519 signature over the request. The
+    server resolves the DID, retrieves the public key from the DID Document, and verifies the signature.
+    This eliminates shared secrets and enables cryptographic non-repudiation.
+  </p>
+
+  <h3>4.3 Endpoint Summary</h3>
+  <table>
+    <tr><th>Endpoint</th><th>Method</th><th>Layer</th><th>Auth</th></tr>
+    <tr><td><code>/.well-known/aicp.json</code></td><td>GET</td><td>Discovery</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/did</code></td><td>POST</td><td>Identity</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/did/{did}</code></td><td>GET</td><td>Identity</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/did/agent</code></td><td>POST</td><td>Identity</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/did/{did}</code></td><td>PUT</td><td>Identity</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/did/{did}/deactivate</code></td><td>POST</td><td>Identity</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/discover/search</code></td><td>GET</td><td>Discovery</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/discover/register</code></td><td>POST</td><td>Discovery</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/onboard</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/onboard/{id}/negotiate</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/onboard/{id}/authorize</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/onboard/{id}/provision</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/verify</code></td><td>POST</td><td>Identity</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/payment/token</code></td><td>POST</td><td>Commerce</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/payment/execute</code></td><td>POST</td><td>Commerce</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/payment/status/{id}</code></td><td>GET</td><td>Commerce</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/credentials/issue</code></td><td>POST</td><td>Identity</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/trust/{did}</code></td><td>GET</td><td>Trust</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/ws/ticket</code></td><td>POST</td><td>Events</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/ws</code></td><td>GET</td><td>Events</td><td>Ticket</td></tr>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<!-- 5. IDENTITY LAYER                                             -->
+<!-- ============================================================ -->
+<section id="identity">
+  <h2><span class="section-num">5.</span> Layer 1: Identity</h2>
+  <p>
+    The Identity Layer is the foundation of AICP. It provides cryptographic identity for both human/organization
+    principals and their autonomous agents through W3C Decentralized Identifiers (DIDs) and Verifiable
+    Credentials (VCs). Every action in the protocol traces back to a verifiable identity.
+  </p>
+
+  <h3>5.1 The <code>did:aicp</code> Method</h3>
+  <p>
+    AICP defines a custom DID method, <code>did:aicp</code>, with a hierarchical identifier structure that
+    encodes the principal-agent relationship directly in the DID syntax:
+  </p>
+  <pre><code>did:aicp:&lt;principal-id&gt;                  # Principal DID (human or organization)
+did:aicp:&lt;principal-id&gt;:&lt;agent-id&gt;       # Agent DID (bound to principal)</code></pre>
+  <p>
+    Identifiers are derived from cryptographic keys: each ID is the <strong>base58btc encoding</strong> of the
+    first 16 bytes of the SHA-256 hash of the entity's Ed25519 public key. This creates a compact,
+    collision-resistant identifier that is intrinsically bound to a key pair.
+  </p>
+
+  <h4>Key Generation</h4>
+  <pre><code>publicKey, privateKey = Ed25519.GenerateKey()
+hash = SHA-256(publicKey)
+id = Base58BTC(hash[0:16])
+did = "did:aicp:" + id                   // Principal
+did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
+
+  <div class="callout">
+    <p><strong>Security Property:</strong> Each agent has its own independent Ed25519 key pair. Compromise
+    of an agent's private key does not compromise the principal or other agents. The principal can
+    deactivate a compromised agent's DID without affecting the rest of the delegation tree.</p>
+  </div>
+
+  <h3>5.2 DID Document</h3>
+  <p>
+    Every DID resolves to a DID Document conforming to the W3C DID Core specification with AICP-specific
+    extensions. The document contains the public keys, authentication methods, and service endpoints
+    associated with the identity.
+  </p>
+  <pre><code>{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://aicp-protocol.org/ns/v1"
+  ],
+  "id": "did:aicp:7Vf3xPqR2nK8mY4j:9Bw2cTdR5nH7kL3p",
+  "controller": "did:aicp:7Vf3xPqR2nK8mY4j",
+  "verificationMethod": [{
+    "id": "did:aicp:7Vf3xPqR2nK8mY4j:9Bw2cTdR5nH7kL3p#key-1",
+    "type": "Ed25519VerificationKey2020",
+    "controller": "did:aicp:7Vf3xPqR2nK8mY4j:9Bw2cTdR5nH7kL3p",
+    "publicKeyMultibase": "z6Mkf5rGMoatrSj1f4CyvuHBeXJELe9RPdzo2PKGNCKVtZxP"
+  }],
+  "authentication": ["did:aicp:7Vf3xPqR2nK8mY4j:9Bw2cTdR5nH7kL3p#key-1"],
+  "assertionMethod": ["did:aicp:7Vf3xPqR2nK8mY4j:9Bw2cTdR5nH7kL3p#key-1"],
+  "capabilityDelegation": ["did:aicp:7Vf3xPqR2nK8mY4j:9Bw2cTdR5nH7kL3p#key-1"],
+  "service": [],
+  "aicp:principal": "did:aicp:7Vf3xPqR2nK8mY4j",
+  "aicp:delegationCredential": "urn:uuid:550e8400-e29b-41d4-a716-446655440000"
+}</code></pre>
+
+  <!-- DIAGRAM: DID Hierarchy -->
+  <div class="diagram">
+    <svg viewBox="0 0 780 380" xmlns="http://www.w3.org/2000/svg" style="max-width:700px;width:100%">
+      <!-- Principal -->
+      <rect x="280" y="20" width="220" height="70" rx="10" fill="#21262d" stroke="#f85149" stroke-width="2"/>
+      <text x="390" y="50" text-anchor="middle" fill="#f85149" font-size="11" font-weight="700" font-family="Inter,sans-serif">PRINCIPAL</text>
+      <text x="390" y="72" text-anchor="middle" fill="#e6edf3" font-size="12" font-family="monospace">did:aicp:7Vf3xPqR2nK8mY4j</text>
+      <!-- Delegation arrows -->
+      <line x1="340" y1="90" x2="170" y2="160" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+      <line x1="390" y1="90" x2="390" y2="160" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+      <line x1="440" y1="90" x2="610" y2="160" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+      <!-- Arrow marker -->
+      <defs>
+        <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/>
+        </marker>
+        <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3fb950"/>
+        </marker>
+      </defs>
+      <!-- Delegation labels -->
+      <text x="230" y="130" text-anchor="middle" fill="#58a6ff" font-size="10" font-family="Inter,sans-serif">delegates</text>
+      <text x="390" y="135" text-anchor="middle" fill="#58a6ff" font-size="10" font-family="Inter,sans-serif">delegates</text>
+      <text x="550" y="130" text-anchor="middle" fill="#58a6ff" font-size="10" font-family="Inter,sans-serif">delegates</text>
+      <!-- Agent 1 -->
+      <rect x="60" y="160" width="220" height="70" rx="10" fill="#21262d" stroke="#58a6ff" stroke-width="2"/>
+      <text x="170" y="188" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="700" font-family="Inter,sans-serif">AGENT: Shopping</text>
+      <text x="170" y="210" text-anchor="middle" fill="#8b949e" font-size="10" font-family="monospace">did:aicp:7Vf3...:9Bw2cTdR</text>
+      <!-- Agent 2 -->
+      <rect x="290" y="160" width="200" height="70" rx="10" fill="#21262d" stroke="#58a6ff" stroke-width="2"/>
+      <text x="390" y="188" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="700" font-family="Inter,sans-serif">AGENT: DevOps</text>
+      <text x="390" y="210" text-anchor="middle" fill="#8b949e" font-size="10" font-family="monospace">did:aicp:7Vf3...:4Kx8nPw2</text>
+      <!-- Agent 3 -->
+      <rect x="500" y="160" width="220" height="70" rx="10" fill="#21262d" stroke="#58a6ff" stroke-width="2"/>
+      <text x="610" y="188" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="700" font-family="Inter,sans-serif">AGENT: Research</text>
+      <text x="610" y="210" text-anchor="middle" fill="#8b949e" font-size="10" font-family="monospace">did:aicp:7Vf3...:2Rm5tYq7</text>
+      <!-- Credentials -->
+      <rect x="60" y="270" width="220" height="50" rx="6" fill="#161b22" stroke="#3fb950" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="170" y="292" text-anchor="middle" fill="#3fb950" font-size="10" font-family="Inter,sans-serif">Delegation VC: $500/day</text>
+      <text x="170" y="308" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">categories: [retail, food]</text>
+      <line x1="170" y1="230" x2="170" y2="270" stroke="#3fb950" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrowGreen)"/>
+      <rect x="290" y="270" width="200" height="50" rx="6" fill="#161b22" stroke="#3fb950" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="390" y="292" text-anchor="middle" fill="#3fb950" font-size="10" font-family="Inter,sans-serif">Delegation VC: $2000/day</text>
+      <text x="390" y="308" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">categories: [cloud, compute]</text>
+      <line x1="390" y1="230" x2="390" y2="270" stroke="#3fb950" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrowGreen)"/>
+      <rect x="500" y="270" width="220" height="50" rx="6" fill="#161b22" stroke="#3fb950" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="610" y="292" text-anchor="middle" fill="#3fb950" font-size="10" font-family="Inter,sans-serif">Delegation VC: $100/day</text>
+      <text x="610" y="308" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">categories: [data, research]</text>
+      <line x1="610" y1="230" x2="610" y2="270" stroke="#3fb950" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrowGreen)"/>
+      <!-- Legend -->
+      <text x="60" y="360" fill="#8b949e" font-size="10" font-family="Inter,sans-serif">&#9632; Each agent has an independent Ed25519 key pair — compromise of one does not affect others</text>
+    </svg>
+    <div class="diagram-caption">Figure 2: Principal-Agent DID Hierarchy with Delegation Credentials</div>
+  </div>
+
+  <h3>5.3 Verifiable Credentials</h3>
+  <p>
+    AICP uses W3C Verifiable Credentials to express capabilities, authorizations, and attestations.
+    Three credential types are defined in the core protocol:
+  </p>
+
+  <h4>5.3.1 Agent Delegation Credential (<code>AICPAgentDelegation</code>)</h4>
+  <p>
+    Issued by a principal to an agent, this credential defines the scope of the agent's authority:
+  </p>
+  <ul>
+    <li><strong>Delegated capabilities:</strong> What the agent is allowed to do (e.g., <code>payment.execute</code>, <code>service.onboard</code>)</li>
+    <li><strong>Spending constraints:</strong> Per-transaction, daily, and monthly limits with currency</li>
+    <li><strong>Service categories:</strong> Allowed merchant categories (e.g., <code>cloud</code>, <code>retail</code>)</li>
+    <li><strong>Geographic restrictions:</strong> Allowed jurisdictions for transactions</li>
+    <li><strong>Concurrency limits:</strong> Maximum simultaneous subscriptions</li>
+  </ul>
+
+  <h4>5.3.2 Spending Authorization Credential (<code>AICPSpendingAuthorization</code>)</h4>
+  <p>
+    Defines which payment methods the agent can use and under what conditions:
+  </p>
+  <ul>
+    <li><strong>Payment methods:</strong> References to configured payment adapters</li>
+    <li><strong>Spending limits:</strong> Per-transaction, daily, and monthly caps</li>
+    <li><strong>Merchant categories:</strong> Allowed categories for spending</li>
+    <li><strong>Approval threshold:</strong> Amounts above this trigger principal approval workflow</li>
+  </ul>
+
+  <h4>5.3.3 Attestation Credential (<code>AICPServiceAttestation</code>)</h4>
+  <p>
+    Issued by services to agents after successful onboarding, serving as proof of established relationship.
+    These contribute to the agent's trust score and can be presented during future onboarding with other services.
+  </p>
+
+  <h3>5.4 Credential Revocation</h3>
+  <p>
+    AICP implements <strong>RevocationList2020</strong> for efficient credential status checking. Each issuer
+    maintains a compressed bitstring where each bit position corresponds to a credential. Revocation is a
+    single bit flip, and verifiers check the bit at the credential's <code>revocationListIndex</code>.
+    The list uses a default capacity of 131,072 entries (2<sup>17</sup>) with atomic updates and version tracking.
+  </p>
+  <p>
+    Revocation events are broadcast in real-time via the WebSocket event system (<code>credential.revoked</code>)
+    and anchored in the consortium ledger for auditability.
+  </p>
+
+  <h3>5.5 Delegation Chain Verification</h3>
+  <p>
+    When a service receives a request from an agent, it verifies the complete delegation chain:
+  </p>
+  <ol>
+    <li>Resolve the agent's DID Document from the ledger</li>
+    <li>Extract the <code>aicp:principal</code> field to identify the controlling principal</li>
+    <li>Retrieve the delegation credential referenced in <code>aicp:delegationCredential</code></li>
+    <li>Verify the credential's signature (issued by the principal's key)</li>
+    <li>Check that the credential is not expired or revoked</li>
+    <li>Validate that the requested action falls within the credential's delegated capabilities</li>
+    <li>Confirm spending constraints are satisfied</li>
+  </ol>
+  <p>
+    This chain provides <strong>cryptographic accountability</strong>: every agent action can be traced
+    through an unforgeable chain of signatures to the responsible principal.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 6. DISCOVERY LAYER                                            -->
+<!-- ============================================================ -->
+<section id="discovery">
+  <h2><span class="section-num">6.</span> Layer 2: Discovery (Agent Name System)</h2>
+  <p>
+    The Discovery Layer provides a decentralized, searchable registry for AICP-compatible services through
+    the <strong>Agent Name System (ANS)</strong>. ANS serves the same role for AI agents that DNS serves for
+    the web — it maps human-readable names and capability queries to structured service descriptions.
+  </p>
+
+  <h3>6.1 ANS Record Structure</h3>
+  <p>
+    Each service publishes an ANS record containing everything an agent needs to evaluate and connect to the service:
+  </p>
+  <pre><code>{
+  "aicp_version": "1.0",
+  "service": {
+    "name": "CloudCompute Pro",
+    "did": "did:aicp:8Kx2mPq4nR7tY5wJ",
+    "description": "High-performance GPU compute for AI workloads",
+    "category": ["cloud", "compute", "gpu"],
+    "homepage": "https://cloudcompute.example.com",
+    "apiDocsUrl": "https://docs.cloudcompute.example.com",
+    "tosUrl": "https://cloudcompute.example.com/terms",
+    "supportContact": "support@cloudcompute.example.com"
+  },
+  "onboarding": {
+    "flows": ["standard"],
+    "required_credentials": ["AICPAgentDelegation"],
+    "accepted_payments": ["stripe", "usdc"],
+    "minimum_trust_score": 200
+  },
+  "authentication": {
+    "did_methods": ["did:aicp"],
+    "auth_protocols": ["DID-Auth"],
+    "session_ttl_seconds": 86400
+  },
+  "pricing": {
+    "model": "tiered",
+    "currency": "USD",
+    "tiers": [
+      { "name": "Standard", "rate": "0.50", "description": "Per GPU-hour, A100" },
+      { "name": "Premium", "rate": "2.00", "description": "Per GPU-hour, H100" }
+    ]
+  },
+  "discovery_tags": ["gpu", "machine-learning", "inference", "training"],
+  "trust": {
+    "verified_by": ["did:aicp:TrustedVerifier1"],
+    "established_since": "2025-01-15",
+    "certifications": ["SOC2", "ISO27001"]
+  },
+  "endpoints": {
+    "onboard": "https://api.cloudcompute.example.com/aicp/v1/onboard",
+    "api_base": "https://api.cloudcompute.example.com",
+    "websocket": "wss://api.cloudcompute.example.com/aicp/v1/ws",
+    "health": "https://api.cloudcompute.example.com/health"
+  }
+}</code></pre>
+
+  <h3>6.2 Discovery Mechanisms</h3>
+  <p>AICP supports three complementary discovery mechanisms:</p>
+
+  <h4>6.2.1 Well-Known Endpoint</h4>
+  <p>
+    Every AICP-compatible service MUST serve its ANS record at <code>/.well-known/aicp.json</code>. This
+    enables direct discovery when an agent knows the service's domain — analogous to <code>/.well-known/openid-configuration</code>
+    in OAuth. Responses are cached with <code>Cache-Control: public, max-age=300</code>.
+  </p>
+
+  <h4>6.2.2 Full-Text Search</h4>
+  <p>
+    The ANS registry supports full-text search via PostgreSQL's <code>tsvector</code> capabilities. Search
+    queries match against service names (weight A), categories (weight B), discovery tags (weight C), and
+    descriptions (weight D). Results are ranked by a combination of text relevance and trust score.
+  </p>
+  <pre><code>GET /aicp/v1/discover/search?query=gpu+compute&limit=10&cursor=
+
+// Returns paginated results with trust-weighted ranking</code></pre>
+
+  <h4>6.2.3 DID-Based Lookup</h4>
+  <p>
+    If an agent already knows a service's DID (from a referral, credential, or prior interaction), it can
+    retrieve the ANS record directly:
+  </p>
+  <pre><code>GET /aicp/v1/discover/did:aicp:8Kx2mPq4nR7tY5wJ</code></pre>
+
+  <h3>6.3 Trust-Weighted Ranking</h3>
+  <p>
+    Search results are not purely text-relevance ordered. The ranking algorithm incorporates the service's
+    trust score, verification status, account age, and certification level to surface trustworthy services
+    first. This discourages fraudulent services from gaming search results through keyword stuffing.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 7. ONBOARDING LAYER                                           -->
+<!-- ============================================================ -->
+<section id="onboarding">
+  <h2><span class="section-num">7.</span> Layer 3: Onboarding</h2>
+  <p>
+    The Onboarding Layer standardizes how agents register with services through a four-phase state machine.
+    This eliminates the need for service-specific registration code and enables agents to autonomously
+    onboard to any AICP-compatible service.
+  </p>
+
+  <h3>7.1 State Machine</h3>
+  <p>
+    The onboarding flow is modeled as a deterministic finite state machine with six states and strict
+    transition guards. Each phase represents a logical checkpoint in the registration process.
+  </p>
+
+  <!-- DIAGRAM: Onboarding State Machine -->
+  <div class="diagram">
+    <svg viewBox="0 0 820 340" xmlns="http://www.w3.org/2000/svg" style="max-width:760px;width:100%">
+      <defs>
+        <marker id="arrOB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3fb950"/>
+        </marker>
+        <marker id="arrFail" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#f85149"/>
+        </marker>
+      </defs>
+      <!-- Phase boxes -->
+      <rect x="20" y="80" width="130" height="55" rx="8" fill="#21262d" stroke="#d29922" stroke-width="2"/>
+      <text x="85" y="103" text-anchor="middle" fill="#d29922" font-size="10" font-weight="700" font-family="Inter,sans-serif">PHASE 1</text>
+      <text x="85" y="122" text-anchor="middle" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">Initiated</text>
+
+      <rect x="180" y="80" width="130" height="55" rx="8" fill="#21262d" stroke="#58a6ff" stroke-width="2"/>
+      <text x="245" y="103" text-anchor="middle" fill="#58a6ff" font-size="10" font-weight="700" font-family="Inter,sans-serif">PHASE 2</text>
+      <text x="245" y="122" text-anchor="middle" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">Identity Presented</text>
+
+      <rect x="340" y="80" width="130" height="55" rx="8" fill="#21262d" stroke="#bc8cff" stroke-width="2"/>
+      <text x="405" y="103" text-anchor="middle" fill="#bc8cff" font-size="10" font-weight="700" font-family="Inter,sans-serif">PHASE 3</text>
+      <text x="405" y="122" text-anchor="middle" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">Caps Negotiated</text>
+
+      <rect x="500" y="80" width="130" height="55" rx="8" fill="#21262d" stroke="#3fb950" stroke-width="2"/>
+      <text x="565" y="103" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="700" font-family="Inter,sans-serif">PHASE 4</text>
+      <text x="565" y="122" text-anchor="middle" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">Payment Auth'd</text>
+
+      <rect x="660" y="80" width="130" height="55" rx="8" fill="#21262d" stroke="#3fb950" stroke-width="2.5"/>
+      <text x="725" y="103" text-anchor="middle" fill="#3fb950" font-size="10" font-weight="700" font-family="Inter,sans-serif">COMPLETE</text>
+      <text x="725" y="122" text-anchor="middle" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">Provisioned</text>
+
+      <!-- Happy path arrows -->
+      <line x1="150" y1="107" x2="178" y2="107" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrOB)"/>
+      <line x1="310" y1="107" x2="338" y2="107" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrOB)"/>
+      <line x1="470" y1="107" x2="498" y2="107" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrOB)"/>
+      <line x1="630" y1="107" x2="658" y2="107" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrOB)"/>
+
+      <!-- Labels above arrows -->
+      <text x="164" y="73" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">DID-Auth</text>
+      <text x="324" y="73" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Negotiate</text>
+      <text x="484" y="73" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Pay Token</text>
+      <text x="644" y="73" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Provision</text>
+
+      <!-- Failed state -->
+      <rect x="340" y="230" width="130" height="50" rx="8" fill="#21262d" stroke="#f85149" stroke-width="2"/>
+      <text x="405" y="260" text-anchor="middle" fill="#f85149" font-size="12" font-weight="700" font-family="Inter,sans-serif">Failed</text>
+
+      <!-- Failure arrows from each phase -->
+      <line x1="85" y1="135" x2="345" y2="235" stroke="#f85149" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrFail)"/>
+      <line x1="245" y1="135" x2="370" y2="230" stroke="#f85149" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrFail)"/>
+      <line x1="405" y1="135" x2="405" y2="228" stroke="#f85149" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrFail)"/>
+      <line x1="565" y1="135" x2="440" y2="230" stroke="#f85149" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrFail)"/>
+
+      <!-- Guard annotations -->
+      <text x="85" y="30" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">Guards: trust score &ge; min,</text>
+      <text x="85" y="42" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">valid DID, session not expired</text>
+
+      <!-- Session info -->
+      <rect x="620" y="230" width="180" height="50" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+      <text x="710" y="250" text-anchor="middle" fill="#8b949e" font-size="10" font-family="Inter,sans-serif">Session: Redis-backed</text>
+      <text x="710" y="266" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">TTL: 24h, auto-expire</text>
+    </svg>
+    <div class="diagram-caption">Figure 3: Four-Phase Onboarding State Machine with Failure Transitions</div>
+  </div>
+
+  <h3>7.2 Phase Details</h3>
+
+  <h4>Phase 1: Initiation</h4>
+  <p>
+    The agent sends a <code>POST /aicp/v1/onboard</code> request with its DID, a verifiable presentation
+    containing its delegation and spending credentials, and a list of requested capabilities. The service:
+  </p>
+  <ol>
+    <li>Creates a Redis-backed session (24-hour TTL, auto-expires)</li>
+    <li>Resolves the agent's DID and verifies the delegation chain</li>
+    <li>Computes or retrieves the agent's trust score</li>
+    <li>Issues a DID-Auth challenge (random nonce + domain + timestamp, 5-minute expiry)</li>
+    <li>Returns the session ID and challenge to the agent</li>
+  </ol>
+
+  <h4>Phase 2: Identity Presentation</h4>
+  <p>
+    The agent responds to the DID-Auth challenge by signing it with its private key via
+    <code>POST /aicp/v1/onboard/{id}/negotiate</code>. The service verifies the signature against the
+    agent's DID Document, confirming cryptographic control of the claimed identity. If a
+    <strong>minimum trust score guard</strong> is configured, the agent's score is checked at this phase.
+  </p>
+
+  <h4>Phase 3: Capability Negotiation</h4>
+  <p>
+    The service evaluates the agent's requested capabilities against its own offering and the agent's
+    delegation constraints. It returns a set of approved capabilities and service terms including:
+  </p>
+  <ul>
+    <li><strong>Pricing tier:</strong> Selected based on the agent's profile and negotiation</li>
+    <li><strong>Rate limits:</strong> Requests per second/minute/hour</li>
+    <li><strong>Billing cycle:</strong> Monthly, annual, pay-as-you-go</li>
+    <li><strong>Currency:</strong> ISO 4217 code for billing</li>
+  </ul>
+
+  <h4>Phase 4: Payment Authorization</h4>
+  <p>
+    The agent provides a signed payment token (see Section 8) to authorize the onboarding fee or initial
+    subscription payment via <code>POST /aicp/v1/onboard/{id}/authorize</code>. The service validates
+    the token's JWS signature, checks spending limits, and processes the payment through the
+    appropriate adapter.
+  </p>
+
+  <h4>Phase 5: Provisioning</h4>
+  <p>
+    Upon successful payment, <code>POST /aicp/v1/onboard/{id}/provision</code> finalizes the account. The
+    service issues an attestation credential (<code>AICPServiceAttestation</code>) to the agent, assigns
+    an account ID, and returns service-specific credentials. The attestation credential contributes to the
+    agent's trust score for future interactions with other services.
+  </p>
+
+  <h3>7.3 Anti-Spam &amp; Rate Limiting</h3>
+  <p>
+    The onboarding layer implements Redis-backed rate limiting to prevent abuse:
+  </p>
+  <ul>
+    <li><strong>Per-DID rate limit:</strong> Maximum onboarding attempts per DID per time window</li>
+    <li><strong>Per-IP rate limit:</strong> Prevents distributed bot attacks from the same source</li>
+    <li><strong>Trust-gated access:</strong> Services can set minimum trust score thresholds, blocking unknown or low-reputation agents</li>
+    <li><strong>Session limits:</strong> Maximum concurrent onboarding sessions per agent</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- 8. COMMERCE LAYER                                             -->
+<!-- ============================================================ -->
+<section id="commerce">
+  <h2><span class="section-num">8.</span> Layer 4: Commerce</h2>
+  <p>
+    The Commerce Layer provides a provider-agnostic payment abstraction that enables agents to execute
+    financial transactions within delegated boundaries. It addresses the fundamental challenge of
+    autonomous agent commerce: how does an AI agent pay for services without holding a credit card?
+  </p>
+
+  <h3>8.1 Payment Token Architecture</h3>
+  <p>
+    AICP's payment mechanism is built on <strong>cryptographic payment tokens</strong> — JSON Web Signatures
+    (JWS) using EdDSA (Ed25519) that encapsulate all payment parameters in a verifiable, tamper-proof envelope.
+    Payment tokens are the protocol's unit of financial authorization.
+  </p>
+
+  <!-- DIAGRAM: Payment Token Flow -->
+  <div class="diagram">
+    <svg viewBox="0 0 820 420" xmlns="http://www.w3.org/2000/svg" style="max-width:760px;width:100%">
+      <defs>
+        <marker id="arrPay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#bc8cff"/>
+        </marker>
+        <marker id="arrPayG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3fb950"/>
+        </marker>
+      </defs>
+      <!-- Actors -->
+      <rect x="30" y="30" width="120" height="50" rx="8" fill="#21262d" stroke="#58a6ff" stroke-width="2"/>
+      <text x="90" y="60" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700" font-family="Inter,sans-serif">Agent</text>
+
+      <rect x="350" y="30" width="120" height="50" rx="8" fill="#21262d" stroke="#bc8cff" stroke-width="2"/>
+      <text x="410" y="60" text-anchor="middle" fill="#bc8cff" font-size="13" font-weight="700" font-family="Inter,sans-serif">AICP Server</text>
+
+      <rect x="670" y="30" width="120" height="50" rx="8" fill="#21262d" stroke="#d29922" stroke-width="2"/>
+      <text x="730" y="60" text-anchor="middle" fill="#d29922" font-size="13" font-weight="700" font-family="Inter,sans-serif">Adapter</text>
+      <text x="730" y="74" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">(Stripe/PayPal/USDC)</text>
+
+      <!-- Vertical lifelines -->
+      <line x1="90" y1="80" x2="90" y2="400" stroke="#30363d" stroke-width="1" stroke-dasharray="4,4"/>
+      <line x1="410" y1="80" x2="410" y2="400" stroke="#30363d" stroke-width="1" stroke-dasharray="4,4"/>
+      <line x1="730" y1="80" x2="730" y2="400" stroke="#30363d" stroke-width="1" stroke-dasharray="4,4"/>
+
+      <!-- Step 1: Request Token -->
+      <line x1="92" y1="110" x2="406" y2="110" stroke="#bc8cff" stroke-width="1.5" marker-end="url(#arrPay)"/>
+      <text x="250" y="103" text-anchor="middle" fill="#e6edf3" font-size="10" font-family="Inter,sans-serif">1. POST /payment/token</text>
+      <text x="250" y="115" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">{amount, purpose, serviceCategory}</text>
+
+      <!-- Step 2: Validate + Sign -->
+      <rect x="370" y="130" width="80" height="30" rx="4" fill="#161b22" stroke="#30363d"/>
+      <text x="410" y="150" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Sign JWS</text>
+
+      <!-- Step 3: Return Token -->
+      <line x1="408" y1="170" x2="92" y2="170" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrPayG)"/>
+      <text x="250" y="165" text-anchor="middle" fill="#e6edf3" font-size="10" font-family="Inter,sans-serif">2. Token (JWS EdDSA)</text>
+      <text x="250" y="177" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">{token, tokenId, expiresAt}</text>
+
+      <!-- Step 4: Execute -->
+      <line x1="92" y1="210" x2="406" y2="210" stroke="#bc8cff" stroke-width="1.5" marker-end="url(#arrPay)"/>
+      <text x="250" y="203" text-anchor="middle" fill="#e6edf3" font-size="10" font-family="Inter,sans-serif">3. POST /payment/execute</text>
+      <text x="250" y="215" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">{token}</text>
+
+      <!-- Step 5: Validate Token -->
+      <rect x="360" y="228" width="100" height="44" rx="4" fill="#161b22" stroke="#30363d"/>
+      <text x="410" y="245" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Verify JWS</text>
+      <text x="410" y="257" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Check replay</text>
+      <text x="410" y="269" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Check limits</text>
+
+      <!-- Step 6: Route to adapter -->
+      <line x1="412" y1="285" x2="726" y2="285" stroke="#bc8cff" stroke-width="1.5" marker-end="url(#arrPay)"/>
+      <text x="570" y="278" text-anchor="middle" fill="#e6edf3" font-size="10" font-family="Inter,sans-serif">4. CreatePaymentIntent</text>
+
+      <!-- Step 7: Capture -->
+      <line x1="412" y1="310" x2="726" y2="310" stroke="#bc8cff" stroke-width="1.5" marker-end="url(#arrPay)"/>
+      <text x="570" y="305" text-anchor="middle" fill="#e6edf3" font-size="10" font-family="Inter,sans-serif">5. CapturePayment</text>
+
+      <!-- Step 8: Adapter confirms -->
+      <line x1="728" y1="330" x2="412" y2="330" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrPayG)"/>
+      <text x="570" y="345" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">settled</text>
+
+      <!-- Step 9: Store receipt + return -->
+      <rect x="370" y="348" width="80" height="22" rx="4" fill="#161b22" stroke="#30363d"/>
+      <text x="410" y="363" text-anchor="middle" fill="#8b949e" font-size="8" font-family="Inter,sans-serif">Store receipt</text>
+
+      <line x1="408" y1="380" x2="92" y2="380" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrPayG)"/>
+      <text x="250" y="373" text-anchor="middle" fill="#e6edf3" font-size="10" font-family="Inter,sans-serif">6. Receipt (hash + status)</text>
+      <text x="250" y="395" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">{receiptId, receiptHash, status: "settled"}</text>
+    </svg>
+    <div class="diagram-caption">Figure 4: Payment Token Lifecycle — Issuance, Execution, and Receipt</div>
+  </div>
+
+  <h3>8.2 Token Structure</h3>
+  <p>
+    A payment token is a JWS (JSON Web Signature) with EdDSA algorithm containing these claims:
+  </p>
+  <pre><code>{
+  "jti": "pt_a1b2c3d4e5f6g7h8",           // Unique token ID (replay prevention)
+  "iss": "did:aicp:8Kx2mPq4nR7tY5wJ#key-1", // Issuer (service DID + key ref)
+  "sub": "did:aicp:7Vf3xPqR2nK8mY4j:9Bw2c", // Subject (agent DID)
+  "aud": "did:aicp:8Kx2mPq4nR7tY5wJ",       // Audience (service DID)
+  "iat": 1711929600,                          // Issued at (Unix seconds)
+  "exp": 1711930500,                          // Expires (iat + 15 min)
+  "aicp:payment": {
+    "amount": { "value": "2500", "currency": "USD" },
+    "maxAmount": { "value": "5000", "currency": "USD" },
+    "purpose": "service-onboarding",
+    "serviceCategory": "cloud",
+    "adapterId": "stripe",
+    "nonce": "f8a3b2c1d0e9f8a7b6c5d4e3",
+    "idempotencyKey": "idem_x7y8z9a0b1c2d3e4"
+  }
+}</code></pre>
+
+  <h3>8.3 Security Properties</h3>
+  <p>The payment token design provides multiple layers of security:</p>
+  <table>
+    <tr><th>Property</th><th>Mechanism</th></tr>
+    <tr><td>Integrity</td><td>JWS EdDSA signature — any modification invalidates the token</td></tr>
+    <tr><td>Replay prevention</td><td><code>jti</code> uniqueness enforced in <code>used_tokens</code> table (PostgreSQL) + Redis nonce cache</td></tr>
+    <tr><td>Time-bound</td><td>15-minute expiry window (<code>exp</code> claim)</td></tr>
+    <tr><td>Amount-bound</td><td>Exact amount in claims; <code>maxAmount</code> caps flexibility</td></tr>
+    <tr><td>Scope-bound</td><td>Purpose, service category, and audience restrict token use</td></tr>
+    <tr><td>Idempotency</td><td><code>idempotencyKey</code> prevents duplicate charges at adapter level</td></tr>
+    <tr><td>Non-repudiation</td><td>Token signed by issuer's Ed25519 key; receipt signed with hash</td></tr>
+  </table>
+
+  <h3>8.4 Payment Adapters</h3>
+  <p>
+    AICP uses the <strong>Strategy pattern</strong> for payment providers. Each adapter implements a common
+    interface, enabling the protocol to route payments to the appropriate provider without coupling
+    business logic to any specific payment API.
+  </p>
+  <pre><code>type PaymentAdapter interface {
+    Name() string
+    SupportedCurrencies() []string
+    Initialize(ctx context.Context, config map[string]any) error
+    Healthy(ctx context.Context) error
+    CreatePaymentIntent(ctx context.Context, params CreateIntentParams) (*PaymentIntent, error)
+    CapturePayment(ctx context.Context, intentID string) (*PaymentCapture, error)
+    RefundPayment(ctx context.Context, intentID string, params *RefundParams) (*PaymentRefund, error)
+    GetPaymentStatus(ctx context.Context, intentID string) (*PaymentStatus, error)
+    ValidateWebhook(ctx context.Context, payload []byte, sig string) (*WebhookEvent, error)
+}</code></pre>
+  <p>Three production adapters are implemented:</p>
+  <ul>
+    <li><span class="hl-blue">Stripe</span> — Credit/debit cards, bank transfers, global coverage</li>
+    <li><span class="hl-green">PayPal</span> — PayPal balance, linked bank accounts, buyer protection</li>
+    <li><span class="hl-purple">USDC (Circle API)</span> — Stablecoin payments, on-chain settlement, programmable money</li>
+  </ul>
+  <p>
+    A <strong>Sandbox adapter</strong> is also provided for testing, which simulates payment flows
+    without connecting to external services.
+  </p>
+
+  <h3>8.5 Spending Controls</h3>
+  <p>
+    Spending enforcement operates at three levels:
+  </p>
+  <ol>
+    <li><strong>Per-transaction limit:</strong> Maximum single payment amount (from delegation credential)</li>
+    <li><strong>Daily aggregate limit:</strong> Total spending in a 24-hour window (tracked in <code>spending_records</code>)</li>
+    <li><strong>Monthly aggregate limit:</strong> Total spending in a calendar month</li>
+  </ol>
+  <p>
+    When a payment exceeds the <code>requiresApprovalAbove</code> threshold defined in the spending
+    authorization credential, the system enters an <strong>approval workflow</strong>:
+  </p>
+  <ol>
+    <li>Payment is paused and a <code>PendingApproval</code> record is created</li>
+    <li>A <code>payment.approval_required</code> event is broadcast via WebSocket</li>
+    <li>The principal reviews and approves/denies via <code>POST /payment/approval/{id}/approve</code></li>
+    <li>On approval, payment execution resumes; on denial, the payment fails with <code>APPROVAL_DENIED</code></li>
+  </ol>
+
+  <h3>8.6 Cryptographic Receipts</h3>
+  <p>
+    Every settled payment produces a <strong>SignedPaymentReceipt</strong> containing a SHA-256 hash
+    computed over the receipt's canonical fields (receipt ID, payer DID, payee DID, amount, timestamp).
+    Receipts are stored in the PostgreSQL <code>payment_receipts</code> table and anchored in the
+    consortium ledger as ledger entries for immutable audit. Agents can retrieve their receipt history
+    via <code>GET /payment/status/{id}</code> and verify receipt integrity by recomputing the hash.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 9. CONSORTIUM LEDGER                                          -->
+<!-- ============================================================ -->
+<section id="ledger">
+  <h2><span class="section-num">9.</span> Consortium Ledger &amp; Consensus</h2>
+  <p>
+    AICP anchors all critical state — DID documents, credential status, payment receipts — in a
+    consortium ledger. Unlike public blockchains, AICP's ledger is a <strong>permissioned, append-only
+    log</strong> maintained by a set of known validators. This provides the immutability and auditability
+    of a blockchain without the throughput limitations and energy costs.
+  </p>
+
+  <h3>9.1 Ledger Architecture</h3>
+
+  <!-- DIAGRAM: Ledger Architecture -->
+  <div class="diagram">
+    <svg viewBox="0 0 800 320" xmlns="http://www.w3.org/2000/svg" style="max-width:720px;width:100%">
+      <defs>
+        <marker id="arrLedger" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/>
+        </marker>
+      </defs>
+      <!-- Block chain visualization -->
+      <rect x="30" y="40" width="140" height="100" rx="8" fill="#21262d" stroke="#58a6ff" stroke-width="1.5"/>
+      <text x="100" y="62" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="700" font-family="Inter,sans-serif">Block N-1</text>
+      <text x="100" y="80" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">prev: 0x8a3f...</text>
+      <text x="100" y="95" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">merkle: 0xb7c2...</text>
+      <text x="100" y="110" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">entries: 12</text>
+      <text x="100" y="130" text-anchor="middle" fill="#6e7681" font-size="8" font-family="Inter,sans-serif">sigs: 3/3 validators</text>
+
+      <line x1="170" y1="90" x2="208" y2="90" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrLedger)"/>
+
+      <rect x="210" y="40" width="140" height="100" rx="8" fill="#21262d" stroke="#58a6ff" stroke-width="2"/>
+      <text x="280" y="62" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="700" font-family="Inter,sans-serif">Block N</text>
+      <text x="280" y="80" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">prev: 0xc4d1...</text>
+      <text x="280" y="95" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">merkle: 0x9f8e...</text>
+      <text x="280" y="110" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">entries: 8</text>
+      <text x="280" y="130" text-anchor="middle" fill="#6e7681" font-size="8" font-family="Inter,sans-serif">sigs: 3/3 validators</text>
+
+      <line x1="350" y1="90" x2="388" y2="90" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrLedger)"/>
+
+      <rect x="390" y="40" width="140" height="100" rx="8" fill="#21262d" stroke="#3fb950" stroke-width="2"/>
+      <text x="460" y="62" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="700" font-family="Inter,sans-serif">Block N+1</text>
+      <text x="460" y="80" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">prev: 0x1a2b...</text>
+      <text x="460" y="95" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">merkle: 0xe5d4...</text>
+      <text x="460" y="110" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">entries: 15</text>
+      <text x="460" y="130" text-anchor="middle" fill="#6e7681" font-size="8" font-family="Inter,sans-serif">sigs: 2/3 (pending)</text>
+
+      <!-- Pending entries pool -->
+      <rect x="580" y="40" width="190" height="100" rx="8" fill="#161b22" stroke="#d29922" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <text x="675" y="62" text-anchor="middle" fill="#d29922" font-size="11" font-weight="700" font-family="Inter,sans-serif">Pending Entries</text>
+      <text x="675" y="82" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">did_anchor: did:aicp:x7y8</text>
+      <text x="675" y="96" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">payment_receipt: rcpt_a1b2</text>
+      <text x="675" y="110" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">credential_revoke: cred_c3</text>
+      <text x="675" y="128" text-anchor="middle" fill="#6e7681" font-size="8" font-family="Inter,sans-serif">batched into next block</text>
+      <line x1="580" y1="90" x2="534" y2="90" stroke="#d29922" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrLedger)"/>
+
+      <!-- Validators -->
+      <rect x="100" y="200" width="120" height="45" rx="6" fill="#21262d" stroke="#bc8cff" stroke-width="1.5"/>
+      <text x="160" y="220" text-anchor="middle" fill="#bc8cff" font-size="10" font-weight="600" font-family="Inter,sans-serif">Validator 1</text>
+      <text x="160" y="236" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">Leader (round N)</text>
+
+      <rect x="280" y="200" width="120" height="45" rx="6" fill="#21262d" stroke="#bc8cff" stroke-width="1.5"/>
+      <text x="340" y="220" text-anchor="middle" fill="#bc8cff" font-size="10" font-weight="600" font-family="Inter,sans-serif">Validator 2</text>
+      <text x="340" y="236" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">Signer</text>
+
+      <rect x="460" y="200" width="120" height="45" rx="6" fill="#21262d" stroke="#bc8cff" stroke-width="1.5"/>
+      <text x="520" y="220" text-anchor="middle" fill="#bc8cff" font-size="10" font-weight="600" font-family="Inter,sans-serif">Validator 3</text>
+      <text x="520" y="236" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">Signer</text>
+
+      <!-- Consensus label -->
+      <text x="340" y="280" text-anchor="middle" fill="#8b949e" font-size="10" font-family="Inter,sans-serif">Round-robin leader election &bull; 2f+1 signature quorum &bull; gRPC block sync</text>
+      <text x="340" y="300" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">Quorum: &lceil;(2 &times; validators + 1) / 3&rceil; signatures required for finalization</text>
+    </svg>
+    <div class="diagram-caption">Figure 5: Consortium Ledger — Block Chain, Pending Entry Pool, and Validator Quorum</div>
+  </div>
+
+  <h3>9.2 Block Structure</h3>
+  <p>Each block contains:</p>
+  <ul>
+    <li><strong>Block number:</strong> Monotonically increasing sequence</li>
+    <li><strong>Previous hash:</strong> SHA-256 of preceding block (chain integrity)</li>
+    <li><strong>Merkle root:</strong> Root of Merkle tree computed over all entry hashes in the block</li>
+    <li><strong>Entry count:</strong> Number of ledger entries included</li>
+    <li><strong>Validator DID:</strong> The proposing validator (round-robin leader)</li>
+    <li><strong>Validator signature:</strong> Proposer's Ed25519 signature over the block hash</li>
+    <li><strong>Collected signatures:</strong> Array of validator signatures (minimum 2f+1 for finalization)</li>
+  </ul>
+  <p>
+    The block hash is computed as: <code>SHA-256("number:previousHash:merkleRoot:proposerDID")</code>,
+    providing a deterministic, verifiable fingerprint.
+  </p>
+
+  <h3>9.3 Consensus Protocol</h3>
+  <p>
+    AICP uses a simplified permissioned consensus with the following properties:
+  </p>
+  <ol>
+    <li><strong>Leader election:</strong> Round-robin based on block number: <code>leader = validators[blockNumber % len(validators)]</code></li>
+    <li><strong>Block proposal:</strong> The leader batches pending entries, computes the Merkle root, and proposes the block</li>
+    <li><strong>Signature collection:</strong> The leader requests signatures from all validators in parallel via gRPC</li>
+    <li><strong>Finalization:</strong> Once 2f+1 signatures are collected (where f = floor((n-1)/3)), the block is finalized and stored</li>
+    <li><strong>Block sync:</strong> Non-leader validators pull finalized blocks via gRPC streaming to maintain consistency</li>
+  </ol>
+
+  <div class="callout">
+    <p><strong>Single-Node Mode:</strong> For development and small deployments, AICP supports single-validator
+    operation where the local node is always the leader and only its own signature is required. This
+    enables zero-configuration local development while maintaining the same block structure.</p>
+  </div>
+
+  <h3>9.4 Ledger Entry Types</h3>
+  <table>
+    <tr><th>Entry Type</th><th>Description</th><th>Data Reference</th></tr>
+    <tr><td><code>did_anchor</code></td><td>New DID document anchored</td><td>DID string</td></tr>
+    <tr><td><code>did_update</code></td><td>DID document updated</td><td>DID + version</td></tr>
+    <tr><td><code>did_deactivate</code></td><td>DID deactivated</td><td>DID string</td></tr>
+    <tr><td><code>credential_issue</code></td><td>Credential issued</td><td>Credential ID</td></tr>
+    <tr><td><code>credential_revoke</code></td><td>Credential revoked</td><td>Credential ID</td></tr>
+    <tr><td><code>payment_receipt</code></td><td>Payment settled</td><td>Receipt ID</td></tr>
+    <tr><td><code>ans_register</code></td><td>ANS record registered</td><td>Service DID</td></tr>
+    <tr><td><code>trust_update</code></td><td>Trust score recomputed</td><td>DID string</td></tr>
+  </table>
+
+  <h3>9.5 Database Schema</h3>
+  <p>
+    The ledger is backed by PostgreSQL 16+ with the following core tables:
+  </p>
+  <ul>
+    <li><code>ledger_blocks</code> — Block chain with hash links and validator signatures (JSONB)</li>
+    <li><code>ledger_entries</code> — Individual entries with block foreign key (NULL for pending)</li>
+    <li><code>did_documents</code> — Current DID document state with JSONB storage</li>
+    <li><code>did_document_versions</code> — Full version history for auditability</li>
+    <li><code>credentials</code> — Verifiable credentials with GIN-indexed type arrays</li>
+    <li><code>revocation_lists</code> — Compressed bitstring revocation lists (131,072 capacity each)</li>
+    <li><code>payment_receipts</code> — Settled receipts with unique <code>token_jti</code> constraint</li>
+    <li><code>used_tokens</code> — Replay prevention table (JTI primary key)</li>
+    <li><code>spending_records</code> — Per-agent daily/monthly spending aggregation</li>
+    <li><code>trust_scores</code> — Computed trust scores with component breakdown</li>
+    <li><code>ans_records</code> — ANS entries with <code>tsvector</code> full-text search index</li>
+    <li><code>validators</code> — Registered validator nodes with gRPC addresses</li>
+    <li><code>onboarding_sessions</code> — Session state (Redis primary, PostgreSQL backup)</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- 10. TRUST FRAMEWORK                                           -->
+<!-- ============================================================ -->
+<section id="trust">
+  <h2><span class="section-num">10.</span> Trust Framework</h2>
+  <p>
+    AICP computes a composite <strong>trust score</strong> (0–1000) for every DID, providing services
+    with a standardized signal for risk assessment. The score is transparent — agents and services can
+    see exactly which components contribute to the final number.
+  </p>
+
+  <h3>10.1 Score Components</h3>
+
+  <!-- DIAGRAM: Trust Score Components -->
+  <div class="diagram">
+    <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" style="max-width:660px;width:100%">
+      <!-- Score meter -->
+      <rect x="250" y="20" width="220" height="50" rx="25" fill="#21262d" stroke="#3fb950" stroke-width="2"/>
+      <text x="360" y="42" text-anchor="middle" fill="#3fb950" font-size="20" font-weight="800" font-family="Inter,sans-serif">735 / 1000</text>
+      <text x="360" y="58" text-anchor="middle" fill="#8b949e" font-size="10" font-family="Inter,sans-serif">Composite Trust Score</text>
+
+      <!-- Component bars -->
+      <text x="30" y="110" fill="#f85149" font-size="11" font-weight="600" font-family="Inter,sans-serif">Identity (25%)</text>
+      <rect x="200" y="98" width="250" height="16" rx="3" fill="#21262d" stroke="#30363d"/>
+      <rect x="200" y="98" width="250" height="16" rx="3" fill="#f85149" fill-opacity="0.5"/>
+      <text x="460" y="111" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">250 / 250</text>
+
+      <text x="30" y="140" fill="#d29922" font-size="11" font-weight="600" font-family="Inter,sans-serif">Account Age (15%)</text>
+      <rect x="200" y="128" width="250" height="16" rx="3" fill="#21262d" stroke="#30363d"/>
+      <rect x="200" y="128" width="170" height="16" rx="3" fill="#d29922" fill-opacity="0.5"/>
+      <text x="460" y="141" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">100 / 150</text>
+
+      <text x="30" y="170" fill="#3fb950" font-size="11" font-weight="600" font-family="Inter,sans-serif">Transactions (20%)</text>
+      <rect x="200" y="158" width="250" height="16" rx="3" fill="#21262d" stroke="#30363d"/>
+      <rect x="200" y="158" width="175" height="16" rx="3" fill="#3fb950" fill-opacity="0.5"/>
+      <text x="460" y="171" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">140 / 200</text>
+
+      <text x="30" y="200" fill="#58a6ff" font-size="11" font-weight="600" font-family="Inter,sans-serif">Endorsements (15%)</text>
+      <rect x="200" y="188" width="250" height="16" rx="3" fill="#21262d" stroke="#30363d"/>
+      <rect x="200" y="188" width="150" height="16" rx="3" fill="#58a6ff" fill-opacity="0.5"/>
+      <text x="460" y="201" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">90 / 150</text>
+
+      <text x="30" y="230" fill="#bc8cff" font-size="11" font-weight="600" font-family="Inter,sans-serif">Credentials (10%)</text>
+      <rect x="200" y="218" width="250" height="16" rx="3" fill="#21262d" stroke="#30363d"/>
+      <rect x="200" y="218" width="190" height="16" rx="3" fill="#bc8cff" fill-opacity="0.5"/>
+      <text x="460" y="231" fill="#e6edf3" font-size="11" font-family="Inter,sans-serif">75 / 100</text>
+
+      <text x="30" y="260" fill="#f85149" font-size="11" font-weight="600" font-family="Inter,sans-serif">Disputes (-15%)</text>
+      <rect x="200" y="248" width="250" height="16" rx="3" fill="#21262d" stroke="#30363d"/>
+      <rect x="200" y="248" width="48" height="16" rx="3" fill="#f85149" fill-opacity="0.3"/>
+      <text x="460" y="261" fill="#f85149" font-size="11" font-family="Inter,sans-serif">-20 / -150</text>
+
+      <!-- Formula -->
+      <text x="360" y="295" text-anchor="middle" fill="#6e7681" font-size="10" font-family="monospace">score = max(0, min(250 + 100 + 140 + 90 + 75 - 20, 1000)) = 735</text>
+    </svg>
+    <div class="diagram-caption">Figure 6: Trust Score Breakdown — Six Weighted Components with Dispute Penalty</div>
+  </div>
+
+  <table>
+    <tr><th>Component</th><th>Weight</th><th>Max Points</th><th>Computation</th></tr>
+    <tr><td>Identity Verification</td><td>25%</td><td>250</td><td>Valid DID (100) + verification methods (100) + service endpoints (50)</td></tr>
+    <tr><td>Account Age</td><td>15%</td><td>150</td><td>Linear growth: <code>(days * 150) / 365</code>, capped at 365 days</td></tr>
+    <tr><td>Successful Transactions</td><td>20%</td><td>200</td><td>Base 100 for first transaction; scales with volume</td></tr>
+    <tr><td>Service Endorsements</td><td>15%</td><td>150</td><td>Attestation credentials from other services</td></tr>
+    <tr><td>Credential Completeness</td><td>10%</td><td>100</td><td>Number and quality of held credentials</td></tr>
+    <tr><td>Dispute History</td><td>-15%</td><td>-150</td><td>Penalty for unresolved disputes or chargebacks</td></tr>
+  </table>
+
+  <h3>10.2 Trust Score Lifecycle</h3>
+  <p>
+    Trust scores are recomputed on relevant events (DID creation, transaction settlement, credential
+    issuance, dispute filing) and persisted in the <code>trust_scores</code> table with the full
+    component breakdown. Scores are also cached in Redis for sub-millisecond lookups during onboarding
+    and payment flows. The score is publicly queryable via <code>GET /aicp/v1/trust/{did}</code>.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 11. EVENT SYSTEM                                              -->
+<!-- ============================================================ -->
+<section id="events">
+  <h2><span class="section-num">11.</span> Real-Time Event System</h2>
+  <p>
+    AICP provides a real-time event system for notifying agents and services of protocol-level events.
+    The system uses WebSocket connections authenticated via one-time tickets, with Redis pub/sub as the
+    distribution backbone.
+  </p>
+
+  <h3>11.1 Event Types</h3>
+  <table>
+    <tr><th>Category</th><th>Event Type</th><th>Description</th></tr>
+    <tr><td rowspan="2">Identity</td><td><code>did.created</code></td><td>New DID anchored on ledger</td></tr>
+    <tr><td><code>did.deactivated</code></td><td>DID deactivated</td></tr>
+    <tr><td rowspan="2">Credentials</td><td><code>credential.revoked</code></td><td>Credential revoked (critical for real-time enforcement)</td></tr>
+    <tr><td><code>revocation_list.updated</code></td><td>Revocation list bitstring updated</td></tr>
+    <tr><td rowspan="4">Payments</td><td><code>payment.settled</code></td><td>Payment successfully captured</td></tr>
+    <tr><td><code>payment.failed</code></td><td>Payment execution failed</td></tr>
+    <tr><td><code>payment.approval_required</code></td><td>Payment exceeds threshold, needs principal approval</td></tr>
+    <tr><td><code>payment.approval_decided</code></td><td>Principal approved or denied payment</td></tr>
+    <tr><td>Trust</td><td><code>trust_score.updated</code></td><td>Trust score recomputed</td></tr>
+    <tr><td>System</td><td><code>system.heartbeat</code></td><td>Connection keepalive (30s interval)</td></tr>
+  </table>
+
+  <h3>11.2 WebSocket Authentication</h3>
+  <p>
+    WebSocket connections use a <strong>ticket-based authentication</strong> flow to avoid passing
+    credentials in WebSocket upgrade headers (which have limited browser support):
+  </p>
+  <ol>
+    <li><code>POST /aicp/v1/ws/ticket</code> with DID-Auth header &rarr; receives a one-time ticket (30-second TTL, stored in Redis)</li>
+    <li><code>GET /aicp/v1/ws?ticket={ticket}</code> &rarr; WebSocket upgrade; ticket is validated, consumed, and the connection is bound to the authenticated DID</li>
+    <li>Client subscribes to event types via in-band WebSocket messages</li>
+    <li>Server pushes matching events to subscribed clients</li>
+  </ol>
+  <p>
+    Connection parameters: 256-event buffer per client, 4KB max message size, 10-second write timeout,
+    60-second pong timeout, 30-second ping interval.
+  </p>
+
+  <h3>11.3 Event Distribution Architecture</h3>
+  <p>
+    Events flow through a three-stage pipeline:
+  </p>
+  <ol>
+    <li><strong>Emission:</strong> Protocol components emit typed events via the <code>EventEmitter</code></li>
+    <li><strong>Distribution:</strong> Events are published to Redis pub/sub channels, enabling horizontal scaling across multiple server instances</li>
+    <li><strong>Delivery:</strong> The WebSocket Hub receives events from Redis and routes them to subscribed clients based on event type and DID</li>
+  </ol>
+  <p>
+    This architecture enables AICP servers to scale horizontally — a client connected to Server A will
+    receive events emitted by Server B, because both share the same Redis pub/sub backbone.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 12. SECURITY                                                  -->
+<!-- ============================================================ -->
+<section id="security">
+  <h2><span class="section-num">12.</span> Security Considerations</h2>
+  <p>
+    Security is foundational to AICP, not an afterthought. The protocol's design addresses the unique
+    threat model of autonomous agents operating in adversarial environments.
+  </p>
+
+  <h3>12.1 Threat Model</h3>
+  <table>
+    <tr><th>Threat</th><th>Mitigation</th></tr>
+    <tr><td>Agent key compromise</td><td>Independent Ed25519 keys per agent; principal can deactivate compromised agent DID without affecting others. Revocation broadcast via WebSocket events.</td></tr>
+    <tr><td>Payment replay attacks</td><td>Triple defense: unique <code>jti</code> in PostgreSQL <code>used_tokens</code> table, <code>nonce</code> in Redis cache, and <code>idempotencyKey</code> at the payment adapter level.</td></tr>
+    <tr><td>Token theft</td><td>Payment tokens are time-bound (15-minute expiry), amount-bound (exact value in claims), and audience-bound (specific service DID).</td></tr>
+    <tr><td>Impersonation</td><td>DID-Auth requires Ed25519 signature over each request; no shared secrets or bearer tokens.</td></tr>
+    <tr><td>Unauthorized spending</td><td>Three-tier spending limits (per-transaction, daily, monthly) enforced server-side. High-value transactions trigger principal approval workflow.</td></tr>
+    <tr><td>Credential forgery</td><td>All credentials are JWS-signed by the issuer; verification checks signature, expiry, and revocation status.</td></tr>
+    <tr><td>Ledger tampering</td><td>Append-only blocks with Merkle roots and 2f+1 validator signatures. Block hash chain prevents retroactive modification.</td></tr>
+    <tr><td>Man-in-the-middle</td><td>All transport over TLS. DID-Auth signatures provide end-to-end integrity independent of transport security.</td></tr>
+    <tr><td>Denial of service</td><td>Redis-backed rate limiting per DID and per IP. Trust score gating for onboarding. Session limits prevent resource exhaustion.</td></tr>
+    <tr><td>Validator collusion</td><td>2f+1 quorum requirement means at least two-thirds of validators must agree. Validator set managed by consortium governance.</td></tr>
+  </table>
+
+  <h3>12.2 Cryptographic Choices</h3>
+  <ul>
+    <li><strong>Ed25519:</strong> All signing operations use Ed25519 via Go's stdlib <code>crypto/ed25519</code> (server), <code>@noble/ed25519</code> (TypeScript SDK), and <code>PyNaCl</code> (Python SDK). Ed25519 provides 128-bit security, deterministic signatures, and fast verification.</li>
+    <li><strong>SHA-256:</strong> Used for document hashes, Merkle trees, DID generation (truncated), block hashes, and receipt hashes.</li>
+    <li><strong>JWS/EdDSA:</strong> Payment tokens use JSON Web Signature with EdDSA algorithm via <code>go-jose/v4</code>.</li>
+    <li><strong>Base58btc:</strong> Multibase encoding for public keys and signatures (compact, no ambiguous characters).</li>
+  </ul>
+  <p>
+    All cryptographic primitives use audited, maintained libraries with no custom implementations. The Go
+    server's crypto is FIPS-capable through the standard library.
+  </p>
+
+  <h3>12.3 Privacy</h3>
+  <p>
+    AICP minimizes personally identifiable information (PII) in the protocol:
+  </p>
+  <ul>
+    <li>DIDs are pseudonymous — they reveal the principal-agent relationship but not the principal's real-world identity</li>
+    <li>Trust scores are computed from on-chain behavior, not off-chain personal data</li>
+    <li>Payment receipts contain DIDs and amounts but no personal payment details (those are in the adapter layer)</li>
+    <li>The protocol supports selective disclosure through Verifiable Presentations — agents reveal only the claims needed for a specific interaction</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- 13. IMPLEMENTATION                                            -->
+<!-- ============================================================ -->
+<section id="implementation">
+  <h2><span class="section-num">13.</span> Implementation &amp; Technology</h2>
+  <p>
+    The AICP reference implementation is a production-grade system, not a prototype. Every component is
+    built for deployment, observability, and horizontal scaling.
+  </p>
+
+  <h3>13.1 System Architecture</h3>
+
+  <!-- DIAGRAM: System Architecture -->
+  <div class="diagram">
+    <svg viewBox="0 0 840 460" xmlns="http://www.w3.org/2000/svg" style="max-width:780px;width:100%">
+      <defs>
+        <marker id="arrSys" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/>
+        </marker>
+      </defs>
+      <!-- Client layer -->
+      <rect x="30" y="20" width="140" height="50" rx="8" fill="#21262d" stroke="#58a6ff" stroke-width="1.5"/>
+      <text x="100" y="42" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600" font-family="Inter,sans-serif">TypeScript SDK</text>
+      <text x="100" y="58" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">@aicp/sdk (npm)</text>
+
+      <rect x="200" y="20" width="140" height="50" rx="8" fill="#21262d" stroke="#3fb950" stroke-width="1.5"/>
+      <text x="270" y="42" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="600" font-family="Inter,sans-serif">Python SDK</text>
+      <text x="270" y="58" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">aicp (PyPI)</text>
+
+      <rect x="370" y="20" width="140" height="50" rx="8" fill="#21262d" stroke="#d29922" stroke-width="1.5"/>
+      <text x="440" y="42" text-anchor="middle" fill="#d29922" font-size="11" font-weight="600" font-family="Inter,sans-serif">CLI Tool</text>
+      <text x="440" y="58" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">aicp (cobra)</text>
+
+      <rect x="540" y="20" width="140" height="50" rx="8" fill="#21262d" stroke="#bc8cff" stroke-width="1.5"/>
+      <text x="610" y="42" text-anchor="middle" fill="#bc8cff" font-size="11" font-weight="600" font-family="Inter,sans-serif">External Agents</text>
+      <text x="610" y="58" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">HTTP/WebSocket</text>
+
+      <!-- Arrows to server -->
+      <line x1="100" y1="70" x2="350" y2="115" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrSys)"/>
+      <line x1="270" y1="70" x2="370" y2="115" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrSys)"/>
+      <line x1="440" y1="70" x2="420" y2="115" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrSys)"/>
+      <line x1="610" y1="70" x2="480" y2="115" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrSys)"/>
+
+      <!-- Server box -->
+      <rect x="240" y="110" width="360" height="160" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
+      <text x="420" y="132" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="700" font-family="Inter,sans-serif">AICP Server (Go)</text>
+      <!-- Internal components -->
+      <rect x="255" y="142" width="80" height="28" rx="4" fill="#21262d" stroke="#30363d"/>
+      <text x="295" y="160" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">chi Router</text>
+
+      <rect x="345" y="142" width="80" height="28" rx="4" fill="#21262d" stroke="#30363d"/>
+      <text x="385" y="160" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Middleware</text>
+
+      <rect x="435" y="142" width="80" height="28" rx="4" fill="#21262d" stroke="#30363d"/>
+      <text x="475" y="160" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Handlers</text>
+
+      <rect x="525" y="142" width="65" height="28" rx="4" fill="#21262d" stroke="#30363d"/>
+      <text x="557" y="160" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">WS Hub</text>
+
+      <rect x="255" y="180" width="75" height="28" rx="4" fill="#21262d" stroke="#f85149" stroke-width="1"/>
+      <text x="293" y="198" text-anchor="middle" fill="#f85149" font-size="9" font-family="Inter,sans-serif">Identity</text>
+
+      <rect x="340" y="180" width="75" height="28" rx="4" fill="#21262d" stroke="#d29922" stroke-width="1"/>
+      <text x="377" y="198" text-anchor="middle" fill="#d29922" font-size="9" font-family="Inter,sans-serif">Discovery</text>
+
+      <rect x="425" y="180" width="75" height="28" rx="4" fill="#21262d" stroke="#3fb950" stroke-width="1"/>
+      <text x="462" y="198" text-anchor="middle" fill="#3fb950" font-size="9" font-family="Inter,sans-serif">Onboarding</text>
+
+      <rect x="510" y="180" width="75" height="28" rx="4" fill="#21262d" stroke="#bc8cff" stroke-width="1"/>
+      <text x="547" y="198" text-anchor="middle" fill="#bc8cff" font-size="9" font-family="Inter,sans-serif">Commerce</text>
+
+      <rect x="305" y="218" width="100" height="28" rx="4" fill="#21262d" stroke="#39d2c0" stroke-width="1"/>
+      <text x="355" y="237" text-anchor="middle" fill="#39d2c0" font-size="9" font-family="Inter,sans-serif">Ledger + Consensus</text>
+
+      <rect x="420" y="218" width="80" height="28" rx="4" fill="#21262d" stroke="#39d2c0" stroke-width="1"/>
+      <text x="460" y="237" text-anchor="middle" fill="#39d2c0" font-size="9" font-family="Inter,sans-serif">Events</text>
+
+      <rect x="510" y="218" width="75" height="28" rx="4" fill="#21262d" stroke="#39d2c0" stroke-width="1"/>
+      <text x="547" y="237" text-anchor="middle" fill="#39d2c0" font-size="9" font-family="Inter,sans-serif">Crypto</text>
+
+      <!-- Data stores -->
+      <rect x="130" y="320" width="160" height="60" rx="8" fill="#21262d" stroke="#58a6ff" stroke-width="1.5"/>
+      <text x="210" y="345" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600" font-family="Inter,sans-serif">PostgreSQL 16+</text>
+      <text x="210" y="365" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">Ledger, DIDs, Receipts, ANS</text>
+      <line x1="350" y1="270" x2="250" y2="318" stroke="#58a6ff" stroke-width="1" marker-end="url(#arrSys)"/>
+
+      <rect x="340" y="320" width="160" height="60" rx="8" fill="#21262d" stroke="#f85149" stroke-width="1.5"/>
+      <text x="420" y="345" text-anchor="middle" fill="#f85149" font-size="12" font-weight="600" font-family="Inter,sans-serif">Redis 7+</text>
+      <text x="420" y="365" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">Sessions, Rate Limits, Pub/Sub</text>
+      <line x1="420" y1="270" x2="420" y2="318" stroke="#f85149" stroke-width="1" marker-end="url(#arrSys)"/>
+
+      <rect x="550" y="320" width="160" height="60" rx="8" fill="#21262d" stroke="#d29922" stroke-width="1.5"/>
+      <text x="630" y="345" text-anchor="middle" fill="#d29922" font-size="12" font-weight="600" font-family="Inter,sans-serif">Payment APIs</text>
+      <text x="630" y="365" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">Stripe, PayPal, Circle</text>
+      <line x1="490" y1="270" x2="600" y2="318" stroke="#d29922" stroke-width="1" marker-end="url(#arrSys)"/>
+
+      <!-- Observability -->
+      <rect x="30" y="320" width="80" height="60" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+      <text x="70" y="348" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">Prometheus</text>
+      <text x="70" y="364" text-anchor="middle" fill="#8b949e" font-size="9" font-family="Inter,sans-serif">+ Grafana</text>
+
+      <!-- Operator -->
+      <rect x="660" y="110" width="150" height="50" rx="8" fill="#21262d" stroke="#39d2c0" stroke-width="1.5"/>
+      <text x="735" y="132" text-anchor="middle" fill="#39d2c0" font-size="11" font-weight="600" font-family="Inter,sans-serif">K8s Operator</text>
+      <text x="735" y="148" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">AICPCluster CRD</text>
+      <line x1="660" y1="135" x2="602" y2="135" stroke="#39d2c0" stroke-width="1" stroke-dasharray="4,3"/>
+
+      <!-- Labels -->
+      <text x="420" y="430" text-anchor="middle" fill="#6e7681" font-size="10" font-family="Inter,sans-serif">Deployment: Docker (scratch base, ~15MB) &bull; Helm Charts &bull; Kubernetes &bull; Tilt (local dev)</text>
+      <text x="420" y="450" text-anchor="middle" fill="#6e7681" font-size="9" font-family="Inter,sans-serif">Observability: Prometheus metrics (aicp_* prefix) &bull; 4 Grafana dashboards &bull; Structured logging (slog)</text>
+    </svg>
+    <div class="diagram-caption">Figure 7: AICP System Architecture — Server, SDKs, Data Stores, and Deployment</div>
+  </div>
+
+  <h3>13.2 Technology Stack</h3>
+  <table>
+    <tr><th>Component</th><th>Technology</th><th>Rationale</th></tr>
+    <tr><td>Server</td><td>Go 1.22+, chi router</td><td>Single binary, goroutines, stdlib crypto, infrastructure standard</td></tr>
+    <tr><td>Database</td><td>PostgreSQL 16+ via pgx</td><td>JSONB for DID docs, full-text search for ANS, ACID for ledger</td></tr>
+    <tr><td>Query generation</td><td>sqlc</td><td>Type-safe Go from SQL — no ORM overhead</td></tr>
+    <tr><td>Cache/Pub-Sub</td><td>Redis 7+ via go-redis</td><td>Sub-ms rate limiting, session store, event distribution</td></tr>
+    <tr><td>Crypto</td><td>Go stdlib crypto/ed25519</td><td>FIPS-capable, audited, zero supply chain risk</td></tr>
+    <tr><td>JWS</td><td>go-jose/v4</td><td>Production-grade JWS/JWE, EdDSA support</td></tr>
+    <tr><td>Logging</td><td>log/slog (stdlib)</td><td>Structured logging, zero external deps</td></tr>
+    <tr><td>Metrics</td><td>prometheus/client_golang</td><td>Industry standard for Kubernetes observability</td></tr>
+    <tr><td>Migrations</td><td>golang-migrate</td><td>Versioned PostgreSQL migrations</td></tr>
+    <tr><td>Testing</td><td>testify + testcontainers-go</td><td>Real PostgreSQL and Redis in tests</td></tr>
+    <tr><td>Build</td><td>Taskfile</td><td>Polyglot task runner, YAML-based, Go-native</td></tr>
+    <tr><td>TypeScript SDK</td><td>Node.js 24+, TypeScript 5.x</td><td>@noble/ed25519 for crypto, single npm package</td></tr>
+    <tr><td>Python SDK</td><td>Python 3.12+, httpx, pydantic v2</td><td>Async-first, runtime validation with PyNaCl</td></tr>
+    <tr><td>Operator</td><td>Operator SDK v1.42 (Go)</td><td>CRD-based lifecycle for consortium clusters</td></tr>
+    <tr><td>Containers</td><td>Docker multi-stage (scratch base)</td><td>~15MB server image, minimal attack surface</td></tr>
+    <tr><td>Orchestration</td><td>Kubernetes + Helm</td><td>HPA, PDB, NetworkPolicy, ServiceMonitor</td></tr>
+    <tr><td>Local Dev</td><td>k3d + Tilt</td><td>Live reload, local K8s cluster, port forwards</td></tr>
+  </table>
+
+  <h3>13.3 Observability</h3>
+  <p>
+    The server exposes Prometheus metrics under the <code>aicp_</code> prefix on a dedicated metrics port
+    (default 9090). Four pre-built Grafana dashboards provide real-time visibility:
+  </p>
+  <ul>
+    <li><strong>AICP Overview:</strong> Request rates, latencies (p50/p95/p99), error rates, active connections</li>
+    <li><strong>Identity &amp; Onboarding:</strong> DID creation rates, onboarding success/failure, phase durations</li>
+    <li><strong>Commerce:</strong> Payment volumes, adapter latencies, spending patterns, approval rates</li>
+    <li><strong>ANS Performance:</strong> Search query rates, result counts, index sizes, cache hit ratios</li>
+  </ul>
+  <p>
+    All request logs use structured JSON via <code>log/slog</code> with correlation IDs for distributed tracing.
+  </p>
+
+  <h3>13.4 Kubernetes Operator</h3>
+  <p>
+    The AICP Operator manages consortium ledger infrastructure on Kubernetes through two Custom Resource Definitions:
+  </p>
+  <ul>
+    <li><strong>AICPCluster:</strong> Defines a consortium cluster with desired validator count, PostgreSQL connection, Redis connection, and consensus parameters. The operator reconciles the desired state by creating/scaling validator StatefulSets.</li>
+    <li><strong>AICPValidator:</strong> Represents an individual validator node with its DID, public key, and gRPC address. Managed by the cluster controller.</li>
+  </ul>
+
+  <h3>13.5 CLI Tool</h3>
+  <p>
+    The <code>aicp</code> CLI (built with Cobra) provides both human-friendly and machine-readable interfaces:
+  </p>
+  <pre><code># Identity management
+aicp did create --output json           # Create principal DID
+aicp did resolve did:aicp:7Vf3xPqR2nK8mY4j  # Resolve DID document
+aicp key generate --algorithm ed25519   # Generate key pair
+
+# Discovery
+aicp discover search "gpu compute"      # Search ANS registry
+
+# Onboarding
+aicp onboard --service did:aicp:8Kx2... --capabilities vm.create
+
+# Payments
+aicp pay --to did:aicp:8Kx2... --amount 25.00 --currency USD</code></pre>
+  <p>
+    Output formats: <code>--output json|table|yaml</code>. JSON mode enables scripting and agent automation.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 14. PROTOCOL COMPARISON                                       -->
+<!-- ============================================================ -->
+<section id="comparison">
+  <h2><span class="section-num">14.</span> Protocol Comparison</h2>
+  <p>
+    AICP occupies a unique position in the agent protocol landscape. The following comparison highlights
+    how AICP complements existing protocols:
+  </p>
+
+  <table>
+    <tr>
+      <th>Capability</th>
+      <th>AICP</th>
+      <th>MCP (Anthropic)</th>
+      <th>A2A (Google)</th>
+      <th>ACP</th>
+      <th>OAuth/OIDC</th>
+    </tr>
+    <tr>
+      <td>Cryptographic agent identity</td>
+      <td class="hl-green">Yes (DID)</td>
+      <td>No</td>
+      <td>Agent Cards</td>
+      <td>No</td>
+      <td>Partial</td>
+    </tr>
+    <tr>
+      <td>Principal-agent delegation</td>
+      <td class="hl-green">Yes (VCs)</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Service discovery</td>
+      <td class="hl-green">Yes (ANS)</td>
+      <td>No</td>
+      <td>Agent Cards</td>
+      <td>No</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Standardized onboarding</td>
+      <td class="hl-green">Yes (4-phase)</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td>Partial</td>
+    </tr>
+    <tr>
+      <td>Payment abstraction</td>
+      <td class="hl-green">Yes (JWS tokens)</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Tool/context access</td>
+      <td>No*</td>
+      <td class="hl-green">Yes</td>
+      <td>Partial</td>
+      <td>Yes</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Agent-to-agent messaging</td>
+      <td>No*</td>
+      <td>No</td>
+      <td class="hl-green">Yes</td>
+      <td class="hl-green">Yes</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Trust scoring</td>
+      <td class="hl-green">Yes (0-1000)</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td>Credential revocation</td>
+      <td class="hl-green">Yes (real-time)</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td>Partial</td>
+    </tr>
+    <tr>
+      <td>Consortium ledger</td>
+      <td class="hl-green">Yes</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+    </tr>
+  </table>
+  <p>
+    <em>* AICP is designed to work alongside MCP (for tools) and A2A/ACP (for agent communication).
+    An agent uses AICP to establish identity and payment capabilities, then leverages other protocols
+    for their specific domains.</em>
+  </p>
+
+  <div class="callout success">
+    <p><strong>The Complementary Model:</strong> In a complete agent stack, AICP provides the identity and
+    commerce foundation (Layer 0), MCP provides tool access (Layer 1), and A2A/ACP provide inter-agent
+    coordination (Layer 2). No single protocol needs to do everything — each does what it does best.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 15. FUTURE WORK                                               -->
+<!-- ============================================================ -->
+<section id="future">
+  <h2><span class="section-num">15.</span> Future Work &amp; Roadmap</h2>
+
+  <h3>15.1 Protocol Extensions</h3>
+  <ul>
+    <li><strong>Multi-DID method support:</strong> Resolve <code>did:web</code>, <code>did:key</code>, and <code>did:ion</code> alongside <code>did:aicp</code> for interoperability with existing identity ecosystems.</li>
+    <li><strong>Zero-knowledge proofs:</strong> Enable agents to prove credential attributes (e.g., "spending limit exceeds $1000") without revealing exact values, enhancing privacy.</li>
+    <li><strong>Cross-chain payment bridges:</strong> Extend the payment adapter framework to support Ethereum, Solana, and other L1/L2 chains beyond USDC.</li>
+    <li><strong>Federated ANS:</strong> Enable multiple AICP deployments to share ANS records through federated search, creating a global agent service directory.</li>
+    <li><strong>Capability-based access control:</strong> Extend delegation credentials with fine-grained, object-capability-style permissions.</li>
+  </ul>
+
+  <h3>15.2 Ecosystem Integration</h3>
+  <ul>
+    <li><strong>MCP integration:</strong> AICP identity provider as an MCP server, enabling MCP-connected agents to use AICP identity seamlessly.</li>
+    <li><strong>A2A bridge:</strong> AICP credential verification as an A2A service, allowing A2A agents to verify identities through AICP.</li>
+    <li><strong>OpenID Connect bridge:</strong> Map AICP DIDs to OIDC identities for integration with traditional web services.</li>
+    <li><strong>Agent framework adapters:</strong> Native integration with LangChain, AutoGPT, CrewAI, and other agent frameworks.</li>
+  </ul>
+
+  <h3>15.3 Governance</h3>
+  <ul>
+    <li><strong>Consortium governance model:</strong> Define formal governance for validator admission, protocol upgrades, and dispute resolution.</li>
+    <li><strong>Economic model:</strong> Design sustainable economics for AICP node operators and service providers.</li>
+    <li><strong>Standards body engagement:</strong> Pursue formal standardization through W3C, IETF, or a dedicated AICP Foundation.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- 16. CONCLUSION                                                -->
+<!-- ============================================================ -->
+<section id="conclusion">
+  <h2><span class="section-num">16.</span> Conclusion</h2>
+  <p>
+    The Agentic Identity and Commerce Protocol addresses the foundational infrastructure gap in the
+    autonomous AI agent ecosystem. By providing cryptographic identity anchored to human accountability,
+    decentralized service discovery, standardized onboarding, and provider-agnostic payment capabilities,
+    AICP enables agents to operate autonomously while maintaining security, auditability, and trust.
+  </p>
+  <p>
+    AICP's four-layer architecture — Identity, Discovery, Onboarding, and Commerce — is deliberately
+    complementary to existing agent protocols. It provides the "plumbing" that MCP, A2A, and ACP assume
+    exists but do not implement. An agent equipped with AICP can discover services it has never seen,
+    prove its identity and authorization, negotiate terms, pay for access, and begin operating — all
+    without human intervention and all within delegated boundaries.
+  </p>
+  <p>
+    The reference implementation demonstrates that this vision is not theoretical. A production-grade Go
+    server with PostgreSQL storage, Redis caching, consortium consensus, and comprehensive observability
+    is deployable today. Client SDKs in TypeScript and Python reduce the "five-call experience" to a
+    few lines of code. The Kubernetes operator automates consortium lifecycle management.
+  </p>
+  <p>
+    As the agent economy grows from millions to billions of autonomous transactions, the need for
+    standardized identity and commerce infrastructure will only intensify. AICP is an open invitation
+    to the community — protocol designers, agent framework authors, service providers, and enterprises —
+    to build on this foundation together.
+  </p>
+  <p>
+    The protocol is open source under the Apache 2.0 license. Contributions, feedback, and collaboration
+    are welcome.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 17. REFERENCES                                                -->
+<!-- ============================================================ -->
+<section id="references">
+  <h2><span class="section-num">17.</span> References</h2>
+  <ol>
+    <li>W3C, "Decentralized Identifiers (DIDs) v1.0," W3C Recommendation, July 2022.</li>
+    <li>W3C, "Verifiable Credentials Data Model v1.1," W3C Recommendation, March 2022.</li>
+    <li>Anthropic, "Model Context Protocol (MCP) Specification," 2024.</li>
+    <li>Google, "Agent-to-Agent (A2A) Protocol," 2025.</li>
+    <li>D. J. Bernstein et al., "High-speed high-security signatures," Journal of Cryptographic Engineering, vol. 2, no. 2, pp. 77-89, 2012. (Ed25519)</li>
+    <li>M. Jones, J. Bradley, and N. Sakimura, "JSON Web Signature (JWS)," RFC 7515, IETF, May 2015.</li>
+    <li>R. C. Merkle, "A Digital Signature Based on a Conventional Encryption Function," Advances in Cryptology — CRYPTO '87, pp. 369-378, 1988.</li>
+    <li>L. Lamport, R. Shostak, and M. Pease, "The Byzantine Generals Problem," ACM Transactions on Programming Languages and Systems, vol. 4, no. 3, pp. 382-401, 1982.</li>
+    <li>NIST, "SHA-256 (Secure Hash Algorithm)," FIPS PUB 180-4, August 2015.</li>
+    <li>Circle Internet Financial, "USDC: A Digital Dollar," Technical Whitepaper, 2023.</li>
+    <li>OpenID Foundation, "OpenID Connect Core 1.0," 2014.</li>
+    <li>OASIS, "DID Method Registry," W3C Community Group, 2023.</li>
+  </ol>
+</section>
+
+</div><!-- /.container -->
+
+<footer class="paper-footer">
+  <p>
+    <strong>AICP: Agentic Identity and Commerce Protocol</strong> &mdash; v2.0, April 2026<br>
+    Open Source &bull; Apache 2.0 License &bull; Protocol Version 1.0<br>
+    <br>
+    <em>"Identity is the foundation. Commerce is the engine. Trust is the bridge."</em>
+  </p>
+</footer>
+
+</body>
+</html>
