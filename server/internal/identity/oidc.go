@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aicp-protocol/aicp/server/internal/crypto"
@@ -75,7 +76,7 @@ func (ob *OIDCBridge) IssueIDToken(ctx context.Context, did string, audience str
 		IssuedAt:  now.Unix(),
 		Nonce:     nonce,
 		DID:       did,
-		DIDMethod: "aicp",
+		DIDMethod: didMethod(did),
 		KeyType:   "Ed25519",
 	}
 
@@ -174,4 +175,14 @@ func (ob *OIDCBridge) VerifyIDToken(token string) (*OIDCClaims, error) {
 	}
 
 	return &claims, nil
+}
+
+// didMethod extracts the DID method from a DID string (e.g., "aicp" from "did:aicp:abc").
+// Returns "unknown" for malformed DIDs. Use extractMethod for strict parsing with errors.
+func didMethod(did string) string {
+	parts := strings.SplitN(did, ":", 3)
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return "unknown"
 }

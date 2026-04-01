@@ -134,16 +134,12 @@ func extractCapabilityGrants(cred *aicp.VerifiableCredential) ([]aicp.Capability
 		return nil, nil
 	}
 
-	// Parse the credential subject to look for capability_grants field.
+	// CredentialSubject is json.RawMessage — unmarshal directly.
 	var subject struct {
 		CapabilityGrants []aicp.CapabilityGrant `json:"capabilityGrants"`
 	}
 
-	data, err := json.Marshal(cred.CredentialSubject)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(data, &subject); err != nil {
+	if err := json.Unmarshal(cred.CredentialSubject, &subject); err != nil {
 		return nil, err
 	}
 

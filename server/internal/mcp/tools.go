@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -163,7 +164,7 @@ func (r *AICPToolRegistry) handleDiscoverSearch(ctx context.Context, params json
 	if args.Query == "" {
 		return textError("query is required"), nil
 	}
-	path := fmt.Sprintf("/aicp/v1/discover/search?capability=%s", args.Query)
+	path := fmt.Sprintf("/aicp/v1/discover/search?capability=%s", url.QueryEscape(args.Query))
 	if args.Limit > 0 {
 		path += fmt.Sprintf("&limit=%d", args.Limit)
 	}

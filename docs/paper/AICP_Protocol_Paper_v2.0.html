@@ -741,6 +741,80 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     This chain provides <strong>cryptographic accountability</strong>: every agent action can be traced
     through an unforgeable chain of signatures to the responsible principal.
   </p>
+
+  <h3>5.6 Multi-DID Method Resolution</h3>
+  <p>
+    While <code>did:aicp</code> is the native method, the protocol supports resolving multiple DID methods
+    through a <strong>pluggable Strategy pattern</strong>. A <code>MultiMethodResolver</code> inspects the DID
+    method prefix and delegates to the appropriate resolver:
+  </p>
+  <ul>
+    <li><strong><code>did:aicp</code>:</strong> Resolved from the consortium ledger (native method)</li>
+    <li><strong><code>did:key</code>:</strong> Stateless resolution — the DID Document is derived entirely from the
+    multibase-encoded Ed25519 public key embedded in the DID itself. No network lookup required.</li>
+    <li><strong><code>did:web</code>:</strong> Resolved by fetching the DID Document from
+    <code>https://domain/.well-known/did.json</code> (or a path-based URL for sub-paths). Enables
+    interoperability with existing web infrastructure.</li>
+  </ul>
+  <p>
+    New DID methods can be added by implementing the <code>DIDMethodResolver</code> interface and registering
+    with the resolver. This design ensures forward compatibility with methods like <code>did:ion</code>,
+    <code>did:peer</code>, or future standards without modifying existing code.
+  </p>
+
+  <h3>5.7 Capability-Based Access Control</h3>
+  <p>
+    AICP extends delegation credentials with fine-grained, object-capability-style permissions. The
+    <code>CapabilityChecker</code> supports hierarchical matching with three levels of granularity:
+  </p>
+  <ul>
+    <li><strong>Exact match:</strong> <code>payment:read</code> matches only <code>payment:read</code></li>
+    <li><strong>Hierarchical wildcard:</strong> <code>payment:*</code> matches <code>payment:read</code>,
+    <code>payment:execute</code>, <code>payment:approve</code></li>
+    <li><strong>Global wildcard:</strong> <code>*</code> matches all capabilities</li>
+  </ul>
+  <p>
+    For resource-scoped access, delegation credentials can include <code>CapabilityGrant</code> objects that
+    bind a capability to a specific resource or service:
+  </p>
+  <pre><code>{
+  "capabilityGrants": [
+    { "capability": "payment:execute", "resource": "svc-123" },
+    { "capability": "payment:read", "resource": "*" }
+  ]
+}</code></pre>
+  <p>
+    This model follows the principle of least privilege: agents receive only the permissions they need,
+    scoped to the resources they should access.
+  </p>
+
+  <h3>5.8 OpenID Connect Bridge</h3>
+  <p>
+    The <code>OIDCBridge</code> maps AICP DIDs to OpenID Connect-compatible identity tokens, enabling agents
+    to authenticate with traditional web services that expect OIDC identity. This is critical for the
+    transition period where services gradually adopt AICP alongside existing authentication systems.
+  </p>
+  <p>
+    The bridge issues JWS-signed ID tokens (EdDSA) containing both standard OIDC claims and AICP-specific
+    extensions:
+  </p>
+  <pre><code>{
+  "iss": "https://idp.aicp.example.com",
+  "sub": "did:aicp:7Vf3xPqR2nK8mY4j:9Bw2cTdR5nH7kL3p",
+  "aud": "https://service.example.com",
+  "exp": 1712000400,
+  "iat": 1711996800,
+  "aicp_did": "did:aicp:7Vf3xPqR2nK8mY4j:9Bw2cTdR5nH7kL3p",
+  "aicp_did_method": "aicp",
+  "aicp_principal": "did:aicp:7Vf3xPqR2nK8mY4j",
+  "aicp_key_type": "Ed25519",
+  "aicp_public_key_hash": "a1b2c3d4e5f6a7b8"
+}</code></pre>
+  <p>
+    The bridge exposes standard OIDC endpoints: <code>/.well-known/openid-configuration</code> for discovery
+    and <code>/.well-known/jwks.json</code> for key material. Services can verify AICP-issued tokens using
+    standard OIDC libraries without any AICP-specific code.
+  </p>
 </section>
 
 <!-- ============================================================ -->
@@ -836,6 +910,29 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     trust score, verification status, account age, and certification level to surface trustworthy services
     first. This discourages fraudulent services from gaming search results through keyword stuffing.
   </p>
+
+  <h3>6.4 Federated ANS</h3>
+  <p>
+    Multiple AICP deployments can share ANS records through <strong>federated search</strong>, creating a
+    global agent service directory without centralized control. The resolution follows a three-tier strategy:
+  </p>
+  <ol>
+    <li><strong>Local:</strong> Query the local ANS registry first (lowest latency, highest trust)</li>
+    <li><strong>Domain:</strong> If the agent knows the service's domain, fetch directly from
+    <code>/.well-known/aicp.json</code></li>
+    <li><strong>Federated peers:</strong> Query registered peer nodes in parallel, deduplicate results by DID,
+    and merge with local results</li>
+  </ol>
+  <p>
+    Peers are registered via a thread-safe <code>PeerRegistry</code> that supports dynamic addition and removal
+    of federation endpoints. Each peer has a name, endpoint URL, and optional trust weight that influences result
+    ranking. Peer queries have independent timeouts to prevent a slow peer from blocking the entire search.
+  </p>
+  <div class="callout">
+    <p><strong>Design Note:</strong> Federated ANS uses a pull model: nodes query peers on-demand rather than
+    replicating entire registries. This keeps the protocol simple and avoids the consistency challenges of
+    distributed replication, while still enabling global discovery.</p>
+  </div>
 </section>
 
 <!-- ============================================================ -->
@@ -1682,6 +1779,36 @@ aicp pay --to did:aicp:8Kx2... --amount 25.00 --currency USD</code></pre>
   <p>
     Output formats: <code>--output json|table|yaml</code>. JSON mode enables scripting and agent automation.
   </p>
+
+  <h3>13.6 MCP Server Integration</h3>
+  <p>
+    The CLI includes a built-in <strong>Model Context Protocol (MCP) server</strong> that exposes AICP operations
+    as MCP tools, enabling AI agents and LLMs to interact with AICP services through the standardized MCP
+    tool-calling interface. The server uses JSON-RPC 2.0 over stdio transport:
+  </p>
+  <pre><code>aicp mcp   # Start MCP server over stdio</code></pre>
+  <p>
+    The server registers 16 tools covering the full AICP lifecycle:
+  </p>
+  <table>
+    <tr><th>Category</th><th>Tools</th></tr>
+    <tr><td>Identity</td><td><code>aicp_did_create</code>, <code>aicp_did_resolve</code>, <code>aicp_did_create_agent</code></td></tr>
+    <tr><td>Discovery</td><td><code>aicp_discover_search</code>, <code>aicp_discover_get</code>, <code>aicp_discover_register</code></td></tr>
+    <tr><td>Onboarding</td><td><code>aicp_onboard_initiate</code>, <code>aicp_onboard_negotiate</code>, <code>aicp_onboard_authorize</code>, <code>aicp_onboard_provision</code>, <code>aicp_onboard_status</code></td></tr>
+    <tr><td>Commerce</td><td><code>aicp_payment_request_token</code>, <code>aicp_payment_execute</code>, <code>aicp_payment_status</code></td></tr>
+    <tr><td>Verification</td><td><code>aicp_verify</code>, <code>aicp_trust_score</code></td></tr>
+  </table>
+  <p>
+    Each tool acts as a thin adapter between MCP tool calls and the AICP REST API: it validates input parameters,
+    constructs the HTTP request, forwards it to the AICP server, and returns the JSON response formatted for
+    LLM consumption. This means any MCP-compatible agent framework (Claude, GPT, or custom agents) can
+    discover services, onboard, and make payments through AICP without any AICP-specific client library.
+  </p>
+  <div class="callout success">
+    <p><strong>Complementary by design:</strong> The MCP server materializes the "AICP + MCP" complementary model
+    described in Section 14. An LLM uses MCP to call AICP tools, which in turn provide the identity and commerce
+    infrastructure that MCP assumes but does not implement.</p>
+  </div>
 </section>
 
 <!-- ============================================================ -->
@@ -1745,7 +1872,7 @@ aicp pay --to did:aicp:8Kx2... --amount 25.00 --currency USD</code></pre>
     </tr>
     <tr>
       <td>Tool/context access</td>
-      <td>No*</td>
+      <td class="hl-green">Yes (MCP bridge)</td>
       <td class="hl-green">Yes</td>
       <td>Partial</td>
       <td>Yes</td>
@@ -1785,7 +1912,8 @@ aicp pay --to did:aicp:8Kx2... --amount 25.00 --currency USD</code></pre>
     </tr>
   </table>
   <p>
-    <em>* AICP is designed to work alongside MCP (for tools) and A2A/ACP (for agent communication).
+    <em>AICP is designed to work alongside MCP (for tools) and A2A/ACP (for agent communication).
+    With the built-in MCP server bridge, AICP tools are directly accessible to any MCP-compatible agent.
     An agent uses AICP to establish identity and payment capabilities, then leverages other protocols
     for their specific domains.</em>
   </p>
@@ -1803,24 +1931,43 @@ aicp pay --to did:aicp:8Kx2... --amount 25.00 --currency USD</code></pre>
 <section id="future">
   <h2><span class="section-num">15.</span> Future Work &amp; Roadmap</h2>
 
-  <h3>15.1 Protocol Extensions</h3>
+  <h3>15.1 Implemented Extensions (v2.0)</h3>
+  <p>
+    The following items from the original roadmap have been implemented in the reference implementation
+    and are documented in their respective sections:
+  </p>
   <ul>
-    <li><strong>Multi-DID method support:</strong> Resolve <code>did:web</code>, <code>did:key</code>, and <code>did:ion</code> alongside <code>did:aicp</code> for interoperability with existing identity ecosystems.</li>
+    <li><strong>Multi-DID method support</strong> (Section 5.6): Pluggable resolution of <code>did:aicp</code>,
+    <code>did:key</code>, and <code>did:web</code> via the Strategy pattern. New methods can be registered
+    without modifying existing code.</li>
+    <li><strong>Capability-based access control</strong> (Section 5.7): Fine-grained, object-capability-style
+    permissions with hierarchical wildcard matching and resource-scoped grants.</li>
+    <li><strong>OpenID Connect bridge</strong> (Section 5.8): AICP DIDs mapped to OIDC-compatible ID tokens
+    with standard discovery and JWKS endpoints.</li>
+    <li><strong>Federated ANS</strong> (Section 6.4): Three-tier resolution (local, domain, federated peers)
+    with parallel peer queries and DID-based deduplication.</li>
+    <li><strong>MCP server integration</strong> (Section 13.6): Built-in MCP server exposing 16 AICP tools
+    over JSON-RPC 2.0 stdio, enabling any MCP-compatible AI agent to use AICP.</li>
+  </ul>
+
+  <h3>15.2 Protocol Extensions (Planned)</h3>
+  <ul>
     <li><strong>Zero-knowledge proofs:</strong> Enable agents to prove credential attributes (e.g., "spending limit exceeds $1000") without revealing exact values, enhancing privacy.</li>
     <li><strong>Cross-chain payment bridges:</strong> Extend the payment adapter framework to support Ethereum, Solana, and other L1/L2 chains beyond USDC.</li>
-    <li><strong>Federated ANS:</strong> Enable multiple AICP deployments to share ANS records through federated search, creating a global agent service directory.</li>
-    <li><strong>Capability-based access control:</strong> Extend delegation credentials with fine-grained, object-capability-style permissions.</li>
+    <li><strong><code>did:ion</code> / <code>did:peer</code> support:</strong> Add resolvers for additional DID methods as the ecosystem matures.</li>
+    <li><strong>Selective disclosure:</strong> Enable agents to share only specific credential attributes during onboarding, minimizing data exposure.</li>
+    <li><strong>Delegated sub-agents:</strong> Allow agents to delegate a subset of their capabilities to sub-agents, enabling hierarchical agent topologies.</li>
   </ul>
 
-  <h3>15.2 Ecosystem Integration</h3>
+  <h3>15.3 Ecosystem Integration (Planned)</h3>
   <ul>
-    <li><strong>MCP integration:</strong> AICP identity provider as an MCP server, enabling MCP-connected agents to use AICP identity seamlessly.</li>
     <li><strong>A2A bridge:</strong> AICP credential verification as an A2A service, allowing A2A agents to verify identities through AICP.</li>
-    <li><strong>OpenID Connect bridge:</strong> Map AICP DIDs to OIDC identities for integration with traditional web services.</li>
     <li><strong>Agent framework adapters:</strong> Native integration with LangChain, AutoGPT, CrewAI, and other agent frameworks.</li>
+    <li><strong>OIDC relying party mode:</strong> Accept external OIDC tokens (Google, Azure AD) and map them to AICP principal DIDs, enabling enterprise SSO integration.</li>
+    <li><strong>Verifiable Presentations:</strong> Support W3C Verifiable Presentations for composing credentials from multiple issuers into a single proof.</li>
   </ul>
 
-  <h3>15.3 Governance</h3>
+  <h3>15.4 Governance</h3>
   <ul>
     <li><strong>Consortium governance model:</strong> Define formal governance for validator admission, protocol upgrades, and dispute resolution.</li>
     <li><strong>Economic model:</strong> Design sustainable economics for AICP node operators and service providers.</li>
@@ -1850,7 +1997,9 @@ aicp pay --to did:aicp:8Kx2... --amount 25.00 --currency USD</code></pre>
     The reference implementation demonstrates that this vision is not theoretical. A production-grade Go
     server with PostgreSQL storage, Redis caching, consortium consensus, and comprehensive observability
     is deployable today. Client SDKs in TypeScript and Python reduce the "five-call experience" to a
-    few lines of code. The Kubernetes operator automates consortium lifecycle management.
+    few lines of code. The Kubernetes operator automates consortium lifecycle management. Recent additions —
+    multi-DID resolution, federated ANS, capability-based access control, an OIDC bridge, and a built-in
+    MCP server — further strengthen AICP's interoperability with existing identity systems and agent frameworks.
   </p>
   <p>
     As the agent economy grows from millions to billions of autonomous transactions, the need for

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -163,7 +164,7 @@ func (r *Resolver) FederatedSearch(ctx context.Context, capability string, limit
 
 // searchPeer queries a single peer for ANS search results.
 func (r *Resolver) searchPeer(ctx context.Context, peer FederationPeer, capability string, limit int) ([]aicp.ANSRecord, error) {
-	url := fmt.Sprintf("%s/aicp/v1/discover/search?capability=%s&limit=%d", peer.Endpoint, capability, limit)
+	url := fmt.Sprintf("%s/aicp/v1/discover/search?capability=%s&limit=%d", peer.Endpoint, url.QueryEscape(capability), limit)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
