@@ -28,7 +28,14 @@ func NewResolver(local *ANSManager, logger *slog.Logger) *Resolver {
 		local:  local,
 		peers:  NewPeerRegistry(),
 		logger: logger,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+			// Disable redirects to prevent SSRF: a compromised federation peer
+			// could redirect requests to internal services (localhost, metadata, etc.).
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 

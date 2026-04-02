@@ -89,6 +89,68 @@ func TestHub_Broadcast_SubscribedClients(t *testing.T) {
 	assert.Len(t, unsub.send, 0)
 }
 
+func TestHub_Broadcast_CrossDIDIsolation(t *testing.T) {
+	hub := NewHub(testLogger())
+
+	alice := &Client{
+		ID:            "alice",
+		DID:           "did:aicp:alice",
+		hub:           hub,
+		send:          make(chan aicp.Event, sendBuffer),
+		subscriptions: map[aicp.EventType]bool{aicp.EventPaymentSettled: true},
+	}
+	bob := &Client{
+		ID:            "bob",
+		DID:           "did:aicp:bob",
+		hub:           hub,
+		send:          make(chan aicp.Event, sendBuffer),
+		subscriptions: map[aicp.EventType]bool{aicp.EventPaymentSettled: true},
+	}
+
+	hub.Register(alice)
+	hub.Register(bob)
+
+	// Event targeted at Alice's DID — Bob must NOT receive it.
+	event := aicp.Event{
+		Type:    aicp.EventPaymentSettled,
+		Subject: "did:aicp:alice",
+		Source:  "test",
+	}
+	hub.Broadcast(event)
+
+	assert.Len(t, alice.send, 1, "Alice should receive her own event")
+	assert.Len(t, bob.send, 0, "Bob must NOT receive Alice's event (cross-DID leakage)")
+}
+
+func TestHub_Broadcast_SystemWideEvent_NoSubject(t *testing.T) {
+	hub := NewHub(testLogger())
+
+	alice := &Client{
+		ID:            "alice",
+		DID:           "did:aicp:alice",
+		hub:           hub,
+		send:          make(chan aicp.Event, sendBuffer),
+		subscriptions: map[aicp.EventType]bool{aicp.EventHeartbeat: true},
+	}
+	bob := &Client{
+		ID:            "bob",
+		DID:           "did:aicp:bob",
+		hub:           hub,
+		send:          make(chan aicp.Event, sendBuffer),
+		subscriptions: map[aicp.EventType]bool{aicp.EventHeartbeat: true},
+	}
+
+	hub.Register(alice)
+	hub.Register(bob)
+
+	// System-wide event (empty Subject) should go to all subscribers.
+	event := aicp.Event{Type: aicp.EventHeartbeat, Source: "system"}
+	hub.Broadcast(event)
+
+	assert.Len(t, alice.send, 1, "system events should reach all subscribers")
+	assert.Len(t, bob.send, 1, "system events should reach all subscribers")
+}
+
 func TestHub_Broadcast_WildcardSubscription(t *testing.T) {
 	hub := NewHub(testLogger())
 

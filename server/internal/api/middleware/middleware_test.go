@@ -2,14 +2,42 @@ package middleware
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mockDIDKeyResolver implements DIDKeyResolver for tests.
+type mockDIDKeyResolver struct {
+	publicKey ed25519.PublicKey
+	err       error
+}
+
+func (m *mockDIDKeyResolver) ResolvePublicKey(_ context.Context, _ string, _ string) (ed25519.PublicKey, error) {
+	return m.publicKey, m.err
+}
+
+// signTestJWS creates a valid JWS token for testing.
+func signTestJWS(t *testing.T, privateKey ed25519.PrivateKey, kid string) string {
+	t.Helper()
+	signingKey := jose.SigningKey{Algorithm: jose.EdDSA, Key: privateKey}
+	opts := &jose.SignerOptions{}
+	opts.WithHeader("kid", kid)
+	signer, err := jose.NewSigner(signingKey, opts)
+	require.NoError(t, err)
+	jws, err := signer.Sign([]byte(`{"test":"payload"}`))
+	require.NoError(t, err)
+	compact, err := jws.CompactSerialize()
+	require.NoError(t, err)
+	return compact
+}
 
 // ─── DID Validation Tests ────────────────────────────────────────────────────
 
@@ -60,7 +88,7 @@ func TestPrincipalFromAgentDID(t *testing.T) {
 // ─── DID-Auth Middleware Tests ───────────────────────────────────────────────
 
 func TestDIDAuth_NoAuthHeader_PassesThrough(t *testing.T) {
-	handler := DIDAuth()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := DIDAuth(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, ok := GetAuthDID(r.Context())
 		assert.False(t, ok)
 		w.WriteHeader(http.StatusOK)
@@ -73,8 +101,23 @@ func TestDIDAuth_NoAuthHeader_PassesThrough(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestDIDAuth_NilResolver_RejectsAuth(t *testing.T) {
+	// With nil resolver, any auth header should be rejected (fail-closed).
+	handler := DIDAuth(nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be reached")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
 func TestDIDAuth_MalformedHeader_Returns401(t *testing.T) {
-	handler := DIDAuth()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	resolver := &mockDIDKeyResolver{}
+	handler := DIDAuth(resolver)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("handler should not be reached")
 	}))
 
@@ -199,6 +242,122 @@ func TestExtractDIDFromKID(t *testing.T) {
 			assert.Equal(t, tt.expected, extractDIDFromKID(tt.kid))
 		})
 	}
+}
+
+// ─── BodyLimit Middleware Tests ──────────────────────────────────────────────
+
+// ─── DID-Auth Signature Verification Tests ──────────────────────────────────
+
+func TestDIDAuth_ValidSignature_SetsContextDID(t *testing.T) {
+	// Generate a key pair and sign a JWS with the correct key.
+	pub, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	kid := "did:aicp:testprincipal#key-1"
+	token := signTestJWS(t, priv, kid)
+
+	resolver := &mockDIDKeyResolver{publicKey: pub}
+	var capturedDID string
+	handler := DIDAuth(resolver)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedDID, _ = GetAuthDID(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "did:aicp:testprincipal", capturedDID)
+}
+
+func TestDIDAuth_WrongKey_Rejects(t *testing.T) {
+	// Sign with one key, but resolver returns a different public key.
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	differentPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	kid := "did:aicp:victim#key-1"
+	token := signTestJWS(t, priv, kid)
+
+	// Resolver returns the victim's actual public key, not the attacker's.
+	resolver := &mockDIDKeyResolver{publicKey: differentPub}
+	handler := DIDAuth(resolver)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be reached — impersonation succeeded!")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	var resp struct {
+		Error struct{ Message string } `json:"error"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Contains(t, resp.Error.Message, "invalid signature")
+}
+
+func TestDIDAuth_ResolverError_Rejects(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	kid := "did:aicp:deactivated#key-1"
+	token := signTestJWS(t, priv, kid)
+
+	resolver := &mockDIDKeyResolver{err: fmt.Errorf("DID is deactivated")}
+	handler := DIDAuth(resolver)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be reached")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestDIDAuth_ImpersonationAttack_Blocked(t *testing.T) {
+	// Simulate an attacker crafting a JWS with the victim's DID in the kid
+	// but signed with the attacker's own key.
+	attackerPub, attackerPriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	victimPub, _, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	_ = attackerPub // not used — attacker's pub is not in the resolver
+
+	// Attacker crafts JWS with victim's DID in kid, signed with attacker's key.
+	kid := "did:aicp:victimDID#key-1"
+	token := signTestJWS(t, attackerPriv, kid)
+
+	// Resolver returns the VICTIM's actual public key (from ledger).
+	resolver := &mockDIDKeyResolver{publicKey: victimPub}
+	handler := DIDAuth(resolver)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("CRITICAL: impersonation attack succeeded — JWS signature not verified")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code,
+		"impersonation must be rejected: attacker signed with own key but claimed victim's DID")
+}
+
+// ─── IsControllerOf Tests ───────────────────────────────────────────────────
+
+func TestIsControllerOf(t *testing.T) {
+	assert.True(t, IsControllerOf("did:aicp:3J98t1Wp", "did:aicp:3J98t1Wp:5Uen9xH2"))
+	assert.False(t, IsControllerOf("did:aicp:9Xk4mNqR", "did:aicp:3J98t1Wp:5Uen9xH2"))
+	assert.False(t, IsControllerOf("did:aicp:3J98t1Wp", "did:aicp:3J98t1Wp"))
+	assert.False(t, IsControllerOf("", "did:aicp:3J98t1Wp:5Uen9xH2"))
+	assert.False(t, IsControllerOf("did:aicp:3J98t1Wp", ""))
 }
 
 // ─── BodyLimit Middleware Tests ──────────────────────────────────────────────

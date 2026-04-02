@@ -48,3 +48,15 @@ func PrincipalFromAgentDID(agentDID string) string {
 	}
 	return agentDID[:lastColon]
 }
+
+// IsControllerOf returns true if controllerDID is the principal that controls targetDID.
+// A principal controls an agent if the agent DID is prefixed with the principal DID.
+func IsControllerOf(controllerDID, targetDID string) bool {
+	if controllerDID == "" || targetDID == "" {
+		return false
+	}
+	if !IsAgentDID(targetDID) {
+		return false
+	}
+	return PrincipalFromAgentDID(targetDID) == controllerDID
+}

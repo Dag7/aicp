@@ -790,3 +790,58 @@ func TestRateLimiter_BlocksExcessiveRequests(t *testing.T) {
 			"unrelated DID should not be rate-limited")
 	})
 }
+
+// ─── Security Hardening Tests ────────────────────────────────────────────────
+
+func TestSessionManager_Create_CryptoRandomSessionIDs(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	sm := NewSessionManager(rdb, 30*time.Minute)
+
+	ctx := context.Background()
+	ids := make(map[string]bool, 100)
+	for i := 0; i < 100; i++ {
+		state, err := sm.Create(ctx, "did:aicp:agent", "did:aicp:svc")
+		require.NoError(t, err)
+		assert.Regexp(t, `^sess_[0-9a-f]{16}$`, state.SessionID, "session ID must match expected format")
+		assert.False(t, ids[state.SessionID], "session ID collision at iteration %d: %s", i, state.SessionID)
+		ids[state.SessionID] = true
+	}
+}
+
+func TestSessionManager_Create_DifferentAgentsSameMoment(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	sm := NewSessionManager(rdb, 30*time.Minute)
+
+	ctx := context.Background()
+	// Two different agents creating sessions at the same instant must get unique IDs.
+	s1, err := sm.Create(ctx, "did:aicp:alice", "did:aicp:svc")
+	require.NoError(t, err)
+	s2, err := sm.Create(ctx, "did:aicp:bob", "did:aicp:svc")
+	require.NoError(t, err)
+
+	assert.NotEqual(t, s1.SessionID, s2.SessionID, "different agents must get unique session IDs")
+}
+
+func TestAnomalyDetector_Check_AtomicIncrement(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	ad := NewAnomalyDetector(rdb)
+
+	ctx := context.Background()
+	// First 10 calls should succeed (maxSessionsPerWindow = 10).
+	for i := 0; i < 10; i++ {
+		err := ad.Check(ctx, "did:aicp:spammer", "1.2.3.4")
+		assert.NoError(t, err, "call %d should be allowed", i+1)
+	}
+
+	// 11th call should trigger anomaly.
+	err := ad.Check(ctx, "did:aicp:spammer", "1.2.3.4")
+	assert.Error(t, err, "11th call should trigger anomaly detection")
+	assert.Contains(t, err.Error(), "anomaly detected")
+
+	// Verify the key has a TTL set (atomic Lua script).
+	ttl := mr.TTL(anomalySessionPrefix + "did:aicp:spammer")
+	assert.Greater(t, ttl, time.Duration(0), "anomaly key must have TTL set atomically")
+}

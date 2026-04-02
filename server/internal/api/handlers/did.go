@@ -116,10 +116,19 @@ func (h *DIDHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	agentDID := crypto.AgentDID(principalPubKey, agentKP.PublicKey)
 	doc := identity.BuildAgentDocument(agentDID, req.PrincipalDID, agentKP.PublicKey)
 
+	// Anchor the agent DID document to the ledger.
+	proof := identity.ServerAttestationProof(callerDID)
+	receipt, err := h.didMgr.AnchorAgent(r.Context(), agentDID, doc, proof)
+	if err != nil {
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to anchor agent DID")
+		return
+	}
+
 	JSON(w, http.StatusCreated, aicp.DIDCreateAgentResponse{
-		AgentDID:  agentDID,
-		PublicKey: crypto.PublicKeyMultibase(agentKP.PublicKey),
-		Document:  &doc,
+		AgentDID:      agentDID,
+		PublicKey:     crypto.PublicKeyMultibase(agentKP.PublicKey),
+		Document:      &doc,
+		AnchorReceipt: receipt,
 	})
 }
 
@@ -194,10 +203,19 @@ func (h *DIDHandler) Update(w http.ResponseWriter, r *http.Request) {
 		updatedDoc.VerificationMethod = req.VerificationMethod
 	}
 
+	// Persist the update to the ledger.
+	proof := identity.ServerAttestationProof(callerDID)
+	receipt, err := h.didMgr.UpdateDocument(r.Context(), did, updatedDoc, proof)
+	if err != nil {
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to persist DID update")
+		return
+	}
+
 	JSON(w, http.StatusOK, map[string]any{
-		"did":      did,
-		"document": updatedDoc,
-		"status":   "updated",
+		"did":            did,
+		"document":       updatedDoc,
+		"status":         "updated",
+		"anchor_receipt": receipt,
 	})
 }
 
@@ -231,6 +249,13 @@ func (h *DIDHandler) Deactivate(w http.ResponseWriter, r *http.Request) {
 	// Enforce ownership: caller must be the DID itself or its controller.
 	if !h.isAuthorized(callerDID, existing.Document) {
 		JSONError(w, http.StatusForbidden, "FORBIDDEN", "you are not authorized to deactivate this DID")
+		return
+	}
+
+	// Persist the deactivation to the ledger.
+	proof := identity.ServerAttestationProof(callerDID)
+	if err := h.didMgr.DeactivateWithProof(r.Context(), did, proof); err != nil {
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to persist DID deactivation")
 		return
 	}
 

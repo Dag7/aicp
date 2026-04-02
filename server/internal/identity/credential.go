@@ -168,13 +168,18 @@ func (cm *CredentialManager) RevokeCredential(ctx context.Context, credentialID 
 	return cm.backend.RevokeCredential(ctx, credentialID, proof)
 }
 
-// RevokeCredentialByID revokes a credential by its ID using the ledger's
-// revocation mechanism. This is used by the HTTP API where the caller's
-// authorization is handled at the handler/middleware level.
-func (cm *CredentialManager) RevokeCredentialByID(ctx context.Context, credentialID string) error {
-	_, err := cm.backend.GetCredential(ctx, credentialID)
+// RevokeCredentialByID revokes a credential by its ID, enforcing that the
+// caller is the original issuer. Returns an authorization error if the caller
+// DID does not match the credential's issuer.
+func (cm *CredentialManager) RevokeCredentialByID(ctx context.Context, credentialID string, callerDID string) error {
+	cred, err := cm.backend.GetCredential(ctx, credentialID)
 	if err != nil {
 		return fmt.Errorf("getting credential: %w", err)
+	}
+
+	// Enforce: only the issuer can revoke their own credentials.
+	if cred.Issuer != callerDID {
+		return aicp.ErrForbidden
 	}
 
 	proof := aicp.Proof{

@@ -326,8 +326,8 @@ func TestTokenValidator_Validate_ExpiredToken(t *testing.T) {
 	kp, err := crypto.GenerateEd25519KeyPair()
 	require.NoError(t, err)
 
-	// Issue with 0 TTL to make it already expired.
-	issuer, err := NewTokenIssuer(kp, -1*time.Second)
+	// Issue with negative TTL exceeding clock skew tolerance (30s) to ensure expiry.
+	issuer, err := NewTokenIssuer(kp, -1*time.Minute)
 	require.NoError(t, err)
 
 	backend := newMockLedgerBackend()
@@ -1025,4 +1025,119 @@ func TestExecute_NilDelegationVerifier(t *testing.T) {
 	approvalResp, err := pe.checkApproval(ctx, claims)
 	require.NoError(t, err, "checkApproval must not error when approval is nil")
 	assert.Nil(t, approvalResp, "checkApproval must return nil response when approval is nil")
+}
+
+// ─── Security Hardening Tests ────────────────────────────────────────────────
+
+func TestTokenIssuer_Issue_RejectsNegativeAmount(t *testing.T) {
+	kp, err := crypto.GenerateEd25519KeyPair()
+	require.NoError(t, err)
+	issuer, err := NewTokenIssuer(kp, 15*time.Minute)
+	require.NoError(t, err)
+
+	_, err = issuer.Issue(context.Background(), aicp.PaymentTokenRequest{
+		AgentDID:   "did:aicp:agent",
+		ServiceDID: "did:aicp:svc",
+		Amount:     aicp.MoneyAmount{Value: "-50.00", Currency: "USD"},
+		Purpose:    string(aicp.PurposeUsage),
+	})
+	assert.Error(t, err, "negative amounts must be rejected")
+	assert.Contains(t, err.Error(), "amount must be positive")
+}
+
+func TestTokenIssuer_Issue_RejectsZeroAmount(t *testing.T) {
+	kp, err := crypto.GenerateEd25519KeyPair()
+	require.NoError(t, err)
+	issuer, err := NewTokenIssuer(kp, 15*time.Minute)
+	require.NoError(t, err)
+
+	_, err = issuer.Issue(context.Background(), aicp.PaymentTokenRequest{
+		AgentDID:   "did:aicp:agent",
+		ServiceDID: "did:aicp:svc",
+		Amount:     aicp.MoneyAmount{Value: "0", Currency: "USD"},
+		Purpose:    string(aicp.PurposeUsage),
+	})
+	assert.Error(t, err, "zero amounts must be rejected")
+}
+
+func TestTokenIssuer_Issue_RejectsExcessiveAmount(t *testing.T) {
+	kp, err := crypto.GenerateEd25519KeyPair()
+	require.NoError(t, err)
+	issuer, err := NewTokenIssuer(kp, 15*time.Minute)
+	require.NoError(t, err)
+
+	_, err = issuer.Issue(context.Background(), aicp.PaymentTokenRequest{
+		AgentDID:   "did:aicp:agent",
+		ServiceDID: "did:aicp:svc",
+		Amount:     aicp.MoneyAmount{Value: "9999999999.99", Currency: "USD"},
+		Purpose:    string(aicp.PurposeUsage),
+	})
+	assert.Error(t, err, "amount exceeding ceiling must be rejected")
+	assert.Contains(t, err.Error(), "exceeds maximum")
+}
+
+func TestTokenIssuer_Issue_RejectsUnsupportedCurrency(t *testing.T) {
+	kp, err := crypto.GenerateEd25519KeyPair()
+	require.NoError(t, err)
+	issuer, err := NewTokenIssuer(kp, 15*time.Minute)
+	require.NoError(t, err)
+
+	_, err = issuer.Issue(context.Background(), aicp.PaymentTokenRequest{
+		AgentDID:   "did:aicp:agent",
+		ServiceDID: "did:aicp:svc",
+		Amount:     aicp.MoneyAmount{Value: "10.00", Currency: "ZZZ"},
+		Purpose:    string(aicp.PurposeUsage),
+	})
+	assert.Error(t, err, "unsupported currencies must be rejected")
+	assert.Contains(t, err.Error(), "unsupported currency")
+}
+
+func TestTokenIssuer_Issue_CryptoRandomJTI(t *testing.T) {
+	kp, err := crypto.GenerateEd25519KeyPair()
+	require.NoError(t, err)
+	issuer, err := NewTokenIssuer(kp, 15*time.Minute)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	req := aicp.PaymentTokenRequest{
+		AgentDID:   "did:aicp:agent",
+		ServiceDID: "did:aicp:svc",
+		Amount:     aicp.MoneyAmount{Value: "10.00", Currency: "USD"},
+		Purpose:    string(aicp.PurposeUsage),
+	}
+
+	// Issue 100 tokens rapidly; all JTIs must be unique.
+	jtis := make(map[string]bool, 100)
+	for i := 0; i < 100; i++ {
+		resp, err := issuer.Issue(ctx, req)
+		require.NoError(t, err)
+		assert.False(t, jtis[resp.TokenID], "JTI collision detected at iteration %d: %s", i, resp.TokenID)
+		jtis[resp.TokenID] = true
+	}
+}
+
+func TestTokenValidator_Validate_ClockSkewTolerance(t *testing.T) {
+	kp, err := crypto.GenerateEd25519KeyPair()
+	require.NoError(t, err)
+
+	// Issue with -15s TTL: token expired 15s ago, within 30s tolerance.
+	issuer, err := NewTokenIssuer(kp, -15*time.Second)
+	require.NoError(t, err)
+
+	backend := newMockLedgerBackend()
+	validator := NewTokenValidator(backend)
+
+	ctx := context.Background()
+	resp, err := issuer.Issue(ctx, aicp.PaymentTokenRequest{
+		AgentDID:   "did:aicp:agent",
+		ServiceDID: "did:aicp:svc",
+		Amount:     aicp.MoneyAmount{Value: "10.00", Currency: "USD"},
+		Purpose:    string(aicp.PurposeUsage),
+	})
+	require.NoError(t, err)
+
+	pubKeyMultibase := crypto.PublicKeyMultibase(kp.PublicKey)
+	result, err := validator.Validate(ctx, resp.Token, pubKeyMultibase)
+	require.NoError(t, err)
+	assert.True(t, result.Valid, "token within clock skew tolerance should be valid")
 }

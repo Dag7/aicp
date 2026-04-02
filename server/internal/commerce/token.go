@@ -4,26 +4,39 @@ package commerce
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"math/big"
 	"time"
 
-	"github.com/aicp-protocol/aicp/server/internal/crypto"
+	aicpcrypto "github.com/aicp-protocol/aicp/server/internal/crypto"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
 
+// supportedCurrencies is the allowlist of accepted ISO 4217 + stablecoin codes.
+var supportedCurrencies = map[string]bool{
+	"USD": true, "EUR": true, "GBP": true, "JPY": true,
+	"CAD": true, "AUD": true, "CHF": true, "CNY": true,
+	"USDC": true, "USDT": true,
+}
+
+// maxPaymentAmount is the absolute ceiling for any single payment amount.
+var maxPaymentAmount = new(big.Float).SetFloat64(999_999_999.99)
+
 // TokenIssuer creates signed payment tokens (JWS/EdDSA).
 type TokenIssuer struct {
-	signer *crypto.JWSSigner
+	signer *aicpcrypto.JWSSigner
 	keyID  string
 	ttl    time.Duration
 }
 
 // NewTokenIssuer creates a new payment token issuer.
-func NewTokenIssuer(kp *crypto.KeyPair, ttl time.Duration) (*TokenIssuer, error) {
-	did := crypto.PrincipalDID(kp.PublicKey)
+func NewTokenIssuer(kp *aicpcrypto.KeyPair, ttl time.Duration) (*TokenIssuer, error) {
+	did := aicpcrypto.PrincipalDID(kp.PublicKey)
 	keyID := did + aicp.PrimaryKeyFragment
 
-	signer, err := crypto.NewJWSSigner(kp.PrivateKey, keyID)
+	signer, err := aicpcrypto.NewJWSSigner(kp.PrivateKey, keyID)
 	if err != nil {
 		return nil, fmt.Errorf("creating JWS signer: %w", err)
 	}
@@ -35,17 +48,55 @@ func NewTokenIssuer(kp *crypto.KeyPair, ttl time.Duration) (*TokenIssuer, error)
 	}, nil
 }
 
+// validateAmount checks that a payment amount is positive and within bounds.
+func validateAmount(amount aicp.MoneyAmount) error {
+	val, ok := new(big.Float).SetString(amount.Value)
+	if !ok {
+		return fmt.Errorf("invalid amount value")
+	}
+	if val.Sign() <= 0 {
+		return fmt.Errorf("amount must be positive")
+	}
+	if val.Cmp(maxPaymentAmount) > 0 {
+		return fmt.Errorf("amount exceeds maximum")
+	}
+	return nil
+}
+
+// cryptoRandomHex generates n random bytes and returns them as a hex string.
+func cryptoRandomHex(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
+
 // Issue creates a signed AICP payment token.
 func (ti *TokenIssuer) Issue(ctx context.Context, req aicp.PaymentTokenRequest) (*aicp.PaymentTokenResponse, error) {
+	// Validate amount at the commerce layer (defense in depth).
+	if err := validateAmount(req.Amount); err != nil {
+		return nil, fmt.Errorf("invalid payment amount: %w", err)
+	}
+
+	// Validate currency against allowlist.
+	if !supportedCurrencies[req.Amount.Currency] {
+		return nil, fmt.Errorf("unsupported currency: %s", req.Amount.Currency)
+	}
+
 	now := time.Now().UTC()
 	expiresAt := now.Add(ti.ttl)
 
-	jti := fmt.Sprintf("pt_%s_%d", crypto.SHA256Hex([]byte(req.AgentDID + req.ServiceDID + now.String()))[:16], now.UnixNano())
-	nonce := crypto.SHA256Hex([]byte(fmt.Sprintf("%s:%s:%d", req.AgentDID, req.ServiceDID, now.UnixNano())))[:32]
-	idempotencyKey := crypto.SHA256Hex([]byte(jti))[:24]
+	// Use cryptographic randomness for JTI and nonce to prevent collisions.
+	jti := fmt.Sprintf("pt_%s", cryptoRandomHex(16))
+	nonce := cryptoRandomHex(16)
+	idempotencyKey := aicpcrypto.SHA256Hex([]byte(jti))[:32]
 
 	maxAmount := req.Amount
 	if req.MaxAmount != nil {
+		if err := validateAmount(*req.MaxAmount); err != nil {
+			return nil, fmt.Errorf("invalid max amount: %w", err)
+		}
 		maxAmount = *req.MaxAmount
 	}
 

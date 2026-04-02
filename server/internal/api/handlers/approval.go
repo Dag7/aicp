@@ -135,7 +135,7 @@ func (h *ApprovalHandler) handleApprovalError(w http.ResponseWriter, err error) 
 	case errors.Is(err, aicp.ErrApprovalExpired):
 		JSONError(w, http.StatusGone, "APPROVAL_EXPIRED", "the approval has expired")
 	default:
-		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid approval request")
 	}
 }
 

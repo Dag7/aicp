@@ -562,3 +562,61 @@ func TestDiscoveryHandler_ErrorNoLeak(t *testing.T) {
 
 	_ = backend // mock kept for clarity; used indirectly above.
 }
+
+// ─── Error Sanitization Tests ────────────────────────────────────────────────
+
+func TestErrorResponses_NoInternalLeakage(t *testing.T) {
+	// Sensitive strings that must never appear in error responses.
+	sensitivePatterns := []string{
+		"/Users/",
+		"goroutine",
+		"PRIVATE KEY",
+		".go:",
+		"runtime error",
+		"connection refused",
+		"no such host",
+		"pq:",
+		"pgx",
+	}
+
+	// Simulate error messages with internal details.
+	w := httptest.NewRecorder()
+	JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to compute trust score")
+
+	body := w.Body.String()
+	for _, pattern := range sensitivePatterns {
+		assert.NotContains(t, body, pattern,
+			"error response must not contain sensitive pattern: %s", pattern)
+	}
+
+	// Verify the response is valid JSON with the expected structure.
+	var resp Response
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.False(t, resp.Success)
+}
+
+func TestSessionIDValidation_RejectsInvalidFormats(t *testing.T) {
+	tests := []struct {
+		name      string
+		sessionID string
+		valid     bool
+	}{
+		{"valid", "sess_abcdef0123456789", true},
+		{"empty", "", false},
+		{"no prefix", "abcdef0123456789", false},
+		{"too short", "sess_abc", false},
+		{"too long", "sess_abcdef01234567890", false},
+		{"uppercase hex", "sess_ABCDEF0123456789", false},
+		{"path traversal", "sess_../../../etc/pa", false},
+		{"sql injection", "sess_'; DROP TABLE--", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// sessionIDPattern is defined in onboard.go (same package).
+			matched := sessionIDPattern.MatchString(tt.sessionID)
+			assert.Equal(t, tt.valid, matched, "sessionID=%q", tt.sessionID)
+		})
+	}
+}

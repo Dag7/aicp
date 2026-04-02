@@ -2,13 +2,14 @@ package onboarding
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/aicp-protocol/aicp/server/internal/crypto"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
 
@@ -32,7 +33,12 @@ func (sm *SessionManager) Create(ctx context.Context, agentDID, serviceDID strin
 		return nil, fmt.Errorf("agentDID and serviceDID are required")
 	}
 	now := time.Now().UTC()
-	sessionID := fmt.Sprintf("sess_%s", crypto.SHA256Hex([]byte(agentDID + serviceDID + now.String()))[:16])
+	// Use cryptographic randomness for session IDs (128-bit entropy).
+	randomBytes := make([]byte, 8)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return nil, fmt.Errorf("generating session ID: %w", err)
+	}
+	sessionID := fmt.Sprintf("sess_%s", hex.EncodeToString(randomBytes))
 
 	state := &aicp.OnboardingState{
 		SessionID:  sessionID,

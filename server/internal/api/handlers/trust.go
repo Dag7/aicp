@@ -29,7 +29,7 @@ func (h *TrustHandler) GetScore(w http.ResponseWriter, r *http.Request) {
 
 	ts, err := h.trust.Compute(r.Context(), did)
 	if err != nil {
-		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to compute trust score")
 		return
 	}
 

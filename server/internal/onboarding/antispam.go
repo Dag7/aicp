@@ -82,25 +82,29 @@ func NewAnomalyDetector(rdb *redis.Client) *AnomalyDetector {
 	return &AnomalyDetector{redis: rdb}
 }
 
+// anomalyIncrScript atomically increments a counter and sets TTL on first creation.
+// This eliminates the TOCTOU race between INCR and EXPIRE.
+var anomalyIncrScript = redis.NewScript(`
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`)
+
 // Check evaluates an onboarding request for suspicious patterns.
 // Returns nil if the request is allowed, or an error describing the anomaly.
 // Redis errors are treated as non-blocking — the request proceeds.
 func (ad *AnomalyDetector) Check(ctx context.Context, did, ip string) error {
 	recentKey := anomalySessionPrefix + did
-	count, err := ad.redis.Incr(ctx, recentKey).Result()
+	count, err := anomalyIncrScript.Run(ctx, ad.redis, []string{recentKey}, 60).Int64()
 	if err != nil {
 		// Don't block the request on Redis errors; anomaly detection is best-effort.
 		return nil
 	}
-	if count == 1 {
-		if err := ad.redis.Expire(ctx, recentKey, time.Minute).Err(); err != nil {
-			// Non-critical — the key will remain without TTL but won't cause harm.
-			_ = err
-		}
-	}
 
 	if count > maxSessionsPerWindow {
-		return fmt.Errorf("anomaly detected: excessive session creation from DID %s", did)
+		return fmt.Errorf("anomaly detected: excessive session creation")
 	}
 
 	return nil

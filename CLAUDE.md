@@ -140,19 +140,24 @@ task all            # Build + test + lint everything
 ## Security Architecture
 
 ### Authentication
-- **DID-Auth middleware**: Parses `Authorization: Bearer <JWS>` headers
-- JWS tokens signed with EdDSA (Ed25519) via go-jose/v4
-- `kid` header contains `did:aicp:<id>#key-1`, DID extracted and stored in context
-- Handlers check `middleware.GetAuthDID(ctx)` for authenticated identity
+- **DID-Auth middleware with cryptographic JWS verification**: Parses `Authorization: Bearer <JWS>` headers, resolves the signer's DID document from the ledger, and **verifies the JWS signature** against the resolved public key. Only after signature verification succeeds is the DID stored in context.
+- `DIDAuth(resolver DIDKeyResolver)` accepts a resolver interface for public key lookup — fail-closed when resolver is nil
+- `DIDKeyResolver` interface: `ResolvePublicKey(ctx, did, keyID) (ed25519.PublicKey, error)`
+- `DIDAuthResolver` in identity package implements `DIDKeyResolver` by resolving DID documents via `DIDManager`
+- JWS tokens signed with EdDSA (Ed25519) via go-jose/v4, algorithm restricted to EdDSA only
+- `kid` header contains `did:aicp:<id>#key-1`, DID extracted and stored in context after verification
 - Protected routes use `middleware.RequireAuth()` group middleware
 
 ### Authorization
 - **Ownership enforcement**: Mutating operations verify caller DID matches the target resource
-  - DID update/deactivate: caller must be the DID or its controller
-  - Agent creation: caller must be the principal
+  - DID update/deactivate: caller must be the DID or its controller, changes persisted to ledger
+  - Agent creation: caller must be the principal, agent DID anchored to ledger
   - ANS register/delete: caller must own the service DID
   - Credential issue: caller must be the issuer
+  - Credential revoke: caller DID must match credential's `issuer` field (enforced in `RevokeCredentialByID`)
+  - Payment token request: caller DID must be the `agent_did` or its controlling principal (`IsControllerOf`)
   - Approval approve/deny: caller must be the principal of the agent
+  - Onboarding negotiate: DID-Auth challenge-response is mandatory (not optional)
 
 ### Input Validation
 - **DID format validation**: `middleware.IsValidDID()` enforces `did:aicp:<base58btc>` format
@@ -180,9 +185,12 @@ task all            # Build + test + lint everything
 - **No JSON injection**: All error responses use `json.Marshal`, never string concatenation
 - **Panic recovery**: `middleware.Recovery()` catches panics, logs stack traces
 - **WebSocket authentication required**: WebSocket upgrade rejects connections when `TicketAuth` is nil (returns 503) — no unauthenticated fallback
+- **WebSocket DID isolation**: `Hub.Broadcast()` filters events by `Subject` DID — clients only receive events targeting their own DID. System-wide events (empty Subject) are broadcast to all subscribers
 - **WebSocket origin check**: Uses configured `AllowedOrigins` (not wildcard `*` in production)
+- **Unpredictable WebSocket client IDs**: Generated with `crypto/rand` (16 bytes hex), not timestamps
 - **SSRF prevention**: Domain validation (`validateDomain`) rejects path traversal and special characters in federation peer discovery
 - **Response size limiting**: Federation responses capped at 1 MiB via `io.LimitReader`
+- **DID mutations persisted**: All DID create-agent, update, and deactivate operations write through to the ledger backend — no phantom success responses
 
 ## Agent Identity Model
 
@@ -213,7 +221,7 @@ Applied in order (outermost first):
 3. `Logging` — Structured HTTP request logging (slog)
 4. `Metrics` — Prometheus request counters and histograms
 5. `CORS` — Configurable cross-origin headers
-6. `DIDAuth` — JWS Bearer token parsing, DID extraction
+6. `DIDAuth(resolver)` — JWS Bearer token parsing, DID resolution, **signature verification**, context injection
 7. `RequestID` — chi request ID generation
 8. `RealIP` — X-Forwarded-For parsing
 9. `RateLimit` — Redis-backed per-IP rate limiting (conditional)

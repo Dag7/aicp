@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/aicp-protocol/aicp/server/internal/identity"
@@ -64,7 +64,8 @@ func (h *VerifyHandler) resolveDID(ctx context.Context, resp *aicp.VerifyRespons
 	result, err := h.didMgr.Resolve(ctx, resp.DID)
 	if err != nil {
 		resp.Valid = false
-		resp.Errors = append(resp.Errors, fmt.Sprintf("DID not found: %v", err))
+		slog.Warn("DID resolution failed during verification", "did", resp.DID, "error", err)
+		resp.Errors = append(resp.Errors, "DID not found")
 		return
 	}
 	resp.Document = result.Document
@@ -81,7 +82,8 @@ func (h *VerifyHandler) verifyDelegation(ctx context.Context, did string, resp *
 	}
 	chain, err := h.delegator.VerifyDelegation(ctx, did)
 	if err != nil {
-		resp.Errors = append(resp.Errors, fmt.Sprintf("delegation verification failed: %v", err))
+		slog.Warn("delegation verification failed", "did", did, "error", err)
+		resp.Errors = append(resp.Errors, "delegation verification failed")
 		return
 	}
 	if chain == nil {
@@ -124,7 +126,8 @@ func (h *VerifyHandler) verifySingleCredential(ctx context.Context, cred aicp.Ve
 	verResult, err := h.credMgr.VerifyCredential(ctx, cred)
 	if err != nil {
 		cv.Valid = false
-		cv.Error = err.Error()
+		slog.Warn("credential verification error", "credential_id", cred.ID, "error", err)
+		cv.Error = "credential verification failed"
 		return cv
 	}
 	if !verResult.Valid {

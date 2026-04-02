@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -19,23 +20,35 @@ const (
 	didAICPPrefix = "did:aicp:"
 )
 
-// DIDAuth returns middleware that extracts and validates DID-based authentication
-// from the Authorization header. It parses the Bearer JWS token, extracts the
-// kid header (e.g. "did:aicp:abc123#key-1"), derives the signer's DID, and
-// stores it in the request context.
+// DIDKeyResolver resolves a DID to the Ed25519 public key for JWS signature verification.
+// Implementations must return the public key associated with the given keyID
+// (e.g. "did:aicp:abc123#key-1") from the resolved DID document.
+type DIDKeyResolver interface {
+	ResolvePublicKey(ctx context.Context, did string, keyID string) (ed25519.PublicKey, error)
+}
+
+// DIDAuth returns middleware that authenticates requests via DID-based JWS Bearer tokens.
+// It parses the JWS, extracts the kid header, resolves the signer's public key from
+// the DID document, and **cryptographically verifies the JWS signature**. Only after
+// successful verification is the DID stored in the request context.
+//
+// If resolver is nil, the middleware rejects all authenticated requests (fail-closed).
 //
 // If no Authorization header is present, the request continues unauthenticated --
 // individual handlers decide whether authentication is required.
-//
-// If the header is present but the JWS token is malformed or the kid cannot
-// be parsed into a valid DID, the middleware returns 401 Unauthorized.
-func DIDAuth() func(http.Handler) http.Handler {
+func DIDAuth(resolver DIDKeyResolver) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			auth := r.Header.Get("Authorization")
 			if auth == "" {
 				// No auth header: continue unauthenticated.
 				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Fail-closed: if no resolver is configured, reject all auth attempts.
+			if resolver == nil {
+				writeAuthError(w, "authentication not configured")
 				return
 			}
 
@@ -76,6 +89,19 @@ func DIDAuth() func(http.Handler) http.Handler {
 			did := extractDIDFromKID(kid)
 			if did == "" || !strings.HasPrefix(did, didAICPPrefix) {
 				writeAuthError(w, "invalid DID in kid header")
+				return
+			}
+
+			// Resolve the public key from the DID document and verify the JWS signature.
+			pubKey, err := resolver.ResolvePublicKey(r.Context(), did, kid)
+			if err != nil {
+				writeAuthError(w, "failed to resolve signer identity")
+				return
+			}
+
+			// Cryptographically verify the JWS signature against the resolved public key.
+			if _, err := parsed.Verify(pubKey); err != nil {
+				writeAuthError(w, "invalid signature")
 				return
 			}
 

@@ -38,15 +38,23 @@ func (h *Hub) Unregister(client *Client) {
 	h.logger.Info("websocket client disconnected", "client_id", client.ID)
 }
 
-// Broadcast sends an event to all connected clients.
+// Broadcast sends an event to connected clients. If the event has a Subject
+// (a DID), it is only delivered to clients authenticated as that DID, preventing
+// cross-DID information leakage. System-wide events (empty Subject) are broadcast
+// to all subscribed clients.
 func (h *Hub) Broadcast(event aicp.Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
 	for _, client := range h.clients {
-		if client.IsSubscribed(event.Type) {
-			client.Send(event)
+		if !client.IsSubscribed(event.Type) {
+			continue
 		}
+		// If the event targets a specific DID, only deliver to that DID's clients.
+		if event.Subject != "" && client.DID != event.Subject {
+			continue
+		}
+		client.Send(event)
 	}
 }
 

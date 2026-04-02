@@ -49,6 +49,8 @@ func NewPaymentHandler(issuer *commerce.TokenIssuer, executor *commerce.PaymentE
 
 // RequestToken handles POST /aicp/v1/payment/token.
 func (h *PaymentHandler) RequestToken(w http.ResponseWriter, r *http.Request) {
+	callerDID, _ := middleware.GetAuthDID(r.Context())
+
 	var req aicp.PaymentTokenRequest
 	if err := DecodeJSON(r, &req); err != nil {
 		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
@@ -62,6 +64,13 @@ func (h *PaymentHandler) RequestToken(w http.ResponseWriter, r *http.Request) {
 
 	if !middleware.IsValidDID(req.AgentDID) || !middleware.IsValidDID(req.ServiceDID) {
 		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid DID format")
+		return
+	}
+
+	// Enforce ownership: the authenticated caller must be the agent requesting the token,
+	// or the principal that controls the agent.
+	if callerDID != req.AgentDID && !middleware.IsControllerOf(callerDID, req.AgentDID) {
+		JSONError(w, http.StatusForbidden, "FORBIDDEN", "you can only request payment tokens for yourself or your agents")
 		return
 	}
 

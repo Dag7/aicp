@@ -15,6 +15,8 @@ package discovery
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"sync"
 	"testing"
 
@@ -23,6 +25,10 @@ import (
 
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+}
 
 // ─── Mock LedgerBackend ─────────────────────────────────────────────────────
 
@@ -513,4 +519,45 @@ func TestFormatSearchResponse_Empty(t *testing.T) {
 	page := FormatSearchResponse([]RankedResult{}, 10, 0)
 	assert.Empty(t, page.Items)
 	assert.False(t, page.HasMore)
+}
+
+// ─── Security Hardening Tests ────────────────────────────────────────────────
+
+func TestResolver_NoRedirectFollowing(t *testing.T) {
+	// Verify that the resolver's HTTP client does not follow redirects.
+	backend := newMockLedgerBackend()
+	local := NewANSManager(backend)
+	logger := testLogger()
+	resolver := NewResolver(local, logger)
+
+	// The client must have CheckRedirect set.
+	assert.NotNil(t, resolver.client.CheckRedirect,
+		"resolver HTTP client must have redirect checking disabled (SSRF protection)")
+}
+
+func TestValidateDomain_Rejects_PathTraversal(t *testing.T) {
+	tests := []struct {
+		domain string
+		valid  bool
+	}{
+		{"example.com", true},
+		{"", false},
+		{"../etc/passwd", false},
+		{"example.com/path", false},
+		{"example.com:8080", false},
+		{"evil.com?q=1", false},
+		{"evil.com#frag", false},
+		{"user@evil.com", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.domain, func(t *testing.T) {
+			err := validateDomain(tt.domain)
+			if tt.valid {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+			}
+		})
+	}
 }

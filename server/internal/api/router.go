@@ -2,7 +2,8 @@ package api
 
 import (
 	"context"
-	"fmt"
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"time"
@@ -76,7 +77,13 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(middleware.Logging(cfg.Logger))
 	r.Use(middleware.Metrics())
 	r.Use(middleware.CORS(cfg.AllowedOrigins))
-	r.Use(middleware.DIDAuth())
+	// Build the DID key resolver for JWS signature verification.
+	// If no DIDManager is configured, DIDAuth will fail-closed (reject all auth).
+	var didResolver middleware.DIDKeyResolver
+	if cfg.DIDManager != nil {
+		didResolver = identity.NewDIDAuthResolver(cfg.DIDManager)
+	}
+	r.Use(middleware.DIDAuth(didResolver))
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
 
@@ -251,7 +258,13 @@ func NewRouter(cfg RouterConfig) http.Handler {
 					return
 				}
 
-				clientID := fmt.Sprintf("ws_%d", time.Now().UnixNano())
+					// Generate cryptographically random client ID to prevent prediction attacks.
+				var clientIDBytes [16]byte
+				if _, err := rand.Read(clientIDBytes[:]); err != nil {
+					cfg.Logger.Error("failed to generate client ID", "error", err)
+					return
+				}
+				clientID := "ws_" + hex.EncodeToString(clientIDBytes[:])
 				client := websocketpkg.NewClient(clientID, did, conn, cfg.Hub, cfg.Logger)
 				cfg.Hub.Register(client)
 				client.Run(context.Background())

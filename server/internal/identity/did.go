@@ -132,6 +132,35 @@ func (dm *DIDManager) Deactivate(ctx context.Context, did string, signerKP *cryp
 	return dm.backend.DeactivateDID(ctx, did, proof)
 }
 
+// AnchorAgent anchors an agent DID document to the ledger using a pre-built proof.
+// Used by the HTTP handler when the caller's authentication is handled at the middleware level.
+func (dm *DIDManager) AnchorAgent(ctx context.Context, agentDID string, doc aicp.DIDDocument, proof aicp.Proof) (*aicp.AnchorReceipt, error) {
+	return dm.backend.AnchorDID(ctx, agentDID, doc, proof)
+}
+
+// UpdateDocument persists an updated DID document to the ledger.
+// Used by the HTTP handler when the caller's authorization is verified at the handler level.
+func (dm *DIDManager) UpdateDocument(ctx context.Context, did string, doc aicp.DIDDocument, proof aicp.Proof) (*aicp.AnchorReceipt, error) {
+	return dm.backend.UpdateDIDDocument(ctx, did, doc, proof)
+}
+
+// DeactivateWithProof deactivates a DID on the ledger using a pre-built proof.
+// Used by the HTTP handler when the caller's authorization is verified at the handler level.
+func (dm *DIDManager) DeactivateWithProof(ctx context.Context, did string, proof aicp.Proof) error {
+	return dm.backend.DeactivateDID(ctx, did, proof)
+}
+
+// ServerAttestationProof creates a proof that records a server-attested operation,
+// used when the DID-Auth middleware has already verified the caller's identity.
+func ServerAttestationProof(callerDID string) aicp.Proof {
+	return aicp.Proof{
+		Type:               aicp.ProofTypeEd25519Sig2020,
+		Created:            time.Now().UTC(),
+		VerificationMethod: callerDID + aicp.PrimaryKeyFragment,
+		ProofPurpose:       aicp.ProofPurposeAssertion,
+	}
+}
+
 // ListAgents returns all agent DIDs controlled by the given principal.
 func (dm *DIDManager) ListAgents(ctx context.Context, principalDID string) ([]string, error) {
 	return dm.backend.ListAgentDIDs(ctx, principalDID)

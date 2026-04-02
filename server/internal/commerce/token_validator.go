@@ -52,8 +52,9 @@ func (tv *TokenValidator) Validate(ctx context.Context, token string, issuerPubK
 		return result, nil
 	}
 
-	// Check expiry.
-	if claims.ExpiresAt > 0 && time.Unix(claims.ExpiresAt, 0).Before(time.Now()) {
+	// Check expiry with clock skew tolerance for distributed systems.
+	const clockSkewTolerance = 30 * time.Second
+	if claims.ExpiresAt > 0 && time.Unix(claims.ExpiresAt, 0).Add(clockSkewTolerance).Before(time.Now()) {
 		result.Valid = false
 		result.Errors = append(result.Errors, "token has expired")
 		return result, nil

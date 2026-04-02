@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -88,6 +89,8 @@ func (h *CredentialHandler) Issue(w http.ResponseWriter, r *http.Request) {
 // Revoke handles POST /aicp/v1/credentials/{id}/revoke.
 // Requires authentication: the caller must be the credential issuer.
 func (h *CredentialHandler) Revoke(w http.ResponseWriter, r *http.Request) {
+	callerDID, _ := middleware.GetAuthDID(r.Context())
+
 	credentialID := chi.URLParam(r, "id")
 	if credentialID == "" {
 		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "credential ID is required")
@@ -100,7 +103,11 @@ func (h *CredentialHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		req = aicp.CredentialRevokeRequest{}
 	}
 
-	if err := h.credMgr.RevokeCredentialByID(r.Context(), credentialID); err != nil {
+	if err := h.credMgr.RevokeCredentialByID(r.Context(), credentialID, callerDID); err != nil {
+		if errors.Is(err, aicp.ErrForbidden) {
+			JSONError(w, http.StatusForbidden, "FORBIDDEN", "only the credential issuer can revoke")
+			return
+		}
 		JSONError(w, http.StatusInternalServerError, "REVOCATION_FAILED", "credential revocation failed")
 		return
 	}

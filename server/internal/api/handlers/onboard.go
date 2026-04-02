@@ -4,12 +4,16 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"regexp"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/aicp-protocol/aicp/server/internal/onboarding"
 	"github.com/aicp-protocol/aicp/server/pkg/aicp"
 )
+
+// sessionIDPattern validates session ID format to prevent injection.
+var sessionIDPattern = regexp.MustCompile(`^sess_[0-9a-f]{16}$`)
 
 // OnboardHandler handles the 4-phase onboarding endpoints.
 type OnboardHandler struct {
@@ -51,6 +55,10 @@ func (h *OnboardHandler) checkRateLimits(ctx context.Context, did, remoteAddr st
 // getSession retrieves an onboarding session by URL param, writing an error response on failure.
 func (h *OnboardHandler) getSession(w http.ResponseWriter, r *http.Request) (*aicp.OnboardingState, bool) {
 	sessionID := chi.URLParam(r, "id")
+	if !sessionIDPattern.MatchString(sessionID) {
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid session ID format")
+		return nil, false
+	}
 	state, err := h.sessions.Get(r.Context(), sessionID)
 	if err != nil {
 		JSONError(w, http.StatusNotFound, "NOT_FOUND", "session not found")
@@ -136,16 +144,18 @@ func (h *OnboardHandler) Negotiate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify DID-Auth challenge if provided.
-	if req.ChallengeResponse != nil {
-		if err := h.challenge.Verify(r.Context(), state.SessionID, req.ChallengeResponse.Challenge); err != nil {
-			JSONError(w, http.StatusUnauthorized, "AUTH_FAILED", "challenge verification failed")
-			return
-		}
+	// DID-Auth challenge-response is mandatory for negotiate.
+	if req.ChallengeResponse == nil {
+		JSONError(w, http.StatusBadRequest, "INVALID_REQUEST", "challenge_response is required")
+		return
+	}
+	if err := h.challenge.Verify(r.Context(), state.SessionID, req.ChallengeResponse.Challenge); err != nil {
+		JSONError(w, http.StatusUnauthorized, "AUTH_FAILED", "challenge verification failed")
+		return
 	}
 
 	if err := h.transitionTo(r.Context(), state, aicp.PhaseIdentityPresented, aicp.PhaseCapabilitiesNegotiated); err != nil {
-		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", err.Error())
+		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", "session is not in the correct phase for this operation")
 		return
 	}
 
@@ -177,7 +187,7 @@ func (h *OnboardHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.transitionTo(r.Context(), state, aicp.PhasePaymentAuthorized); err != nil {
-		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", err.Error())
+		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", "session is not in the correct phase for this operation")
 		return
 	}
 
@@ -207,7 +217,7 @@ func (h *OnboardHandler) Provision(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.transitionTo(r.Context(), state, aicp.PhaseProvisioned); err != nil {
-		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", err.Error())
+		JSONError(w, http.StatusConflict, "INVALID_TRANSITION", "session is not in the correct phase for this operation")
 		return
 	}
 
