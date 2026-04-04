@@ -525,10 +525,19 @@ const account = await session.provision();</code></pre>
 
   <h3>4.2 Authentication</h3>
   <p>
-    Authenticated endpoints use <strong>DID-Auth</strong>, where the caller includes an
-    <code>Authorization</code> header containing a DID and an Ed25519 signature over the request. The
-    server resolves the DID, retrieves the public key from the DID Document, and verifies the signature.
-    This eliminates shared secrets and enables cryptographic non-repudiation.
+    Authenticated endpoints use <strong>DID-Auth with JWS Bearer tokens</strong>. The caller includes an
+    <code>Authorization: Bearer &lt;JWS&gt;</code> header containing a compact JWS (EdDSA) token. The
+    server extracts the <code>kid</code> header (format: <code>did:aicp:&lt;id&gt;#key-1</code>),
+    resolves the signer's DID document from the consortium ledger via the <code>DIDKeyResolver</code>
+    interface, retrieves the Ed25519 public key, and calls <code>parsed.Verify(pubKey)</code> to
+    cryptographically verify the signature. Only after signature verification succeeds is the DID stored
+    in the request context for downstream handlers.
+  </p>
+  <p>
+    The middleware follows a <strong>fail-closed</strong> design: when no <code>DIDKeyResolver</code> is
+    configured, all authenticated requests are rejected rather than silently passing unauthenticated.
+    The algorithm is restricted to EdDSA only via <code>go-jose/v4</code> allowlisting, preventing
+    algorithm confusion attacks. This eliminates shared secrets and enables cryptographic non-repudiation.
   </p>
 
   <h3>4.3 Endpoint Summary</h3>
@@ -541,7 +550,9 @@ const account = await session.provision();</code></pre>
     <tr><td><code>/aicp/v1/did/{did}</code></td><td>PUT</td><td>Identity</td><td>DID-Auth</td></tr>
     <tr><td><code>/aicp/v1/did/{did}/deactivate</code></td><td>POST</td><td>Identity</td><td>DID-Auth</td></tr>
     <tr><td><code>/aicp/v1/discover/search</code></td><td>GET</td><td>Discovery</td><td>None</td></tr>
+    <tr><td><code>/aicp/v1/discover/{did}</code></td><td>GET</td><td>Discovery</td><td>None</td></tr>
     <tr><td><code>/aicp/v1/discover/register</code></td><td>POST</td><td>Discovery</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/discover/{did}</code></td><td>DELETE</td><td>Discovery</td><td>DID-Auth</td></tr>
     <tr><td><code>/aicp/v1/onboard</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
     <tr><td><code>/aicp/v1/onboard/{id}</code></td><td>GET</td><td>Onboarding</td><td>None</td></tr>
     <tr><td><code>/aicp/v1/onboard/{id}/negotiate</code></td><td>POST</td><td>Onboarding</td><td>None</td></tr>
@@ -551,7 +562,12 @@ const account = await session.provision();</code></pre>
     <tr><td><code>/aicp/v1/payment/token</code></td><td>POST</td><td>Commerce</td><td>DID-Auth</td></tr>
     <tr><td><code>/aicp/v1/payment/execute</code></td><td>POST</td><td>Commerce</td><td>DID-Auth</td></tr>
     <tr><td><code>/aicp/v1/payment/status/{id}</code></td><td>GET</td><td>Commerce</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/payment/approval/{id}</code></td><td>GET</td><td>Commerce</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/payment/approval/{id}/approve</code></td><td>POST</td><td>Commerce</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/payment/approval/{id}/deny</code></td><td>POST</td><td>Commerce</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/payment/approvals/pending</code></td><td>GET</td><td>Commerce</td><td>DID-Auth</td></tr>
     <tr><td><code>/aicp/v1/credentials/issue</code></td><td>POST</td><td>Identity</td><td>DID-Auth</td></tr>
+    <tr><td><code>/aicp/v1/credentials/{id}/revoke</code></td><td>POST</td><td>Identity</td><td>DID-Auth</td></tr>
     <tr><td><code>/aicp/v1/trust/{did}</code></td><td>GET</td><td>Trust</td><td>None</td></tr>
     <tr><td><code>/aicp/v1/ws/ticket</code></td><td>POST</td><td>Events</td><td>DID-Auth</td></tr>
     <tr><td><code>/aicp/v1/ws</code></td><td>GET</td><td>Events</td><td>Ticket</td></tr>
@@ -927,6 +943,10 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     Peers are registered via a thread-safe <code>PeerRegistry</code> that supports dynamic addition and removal
     of federation endpoints. Each peer has a name, endpoint URL, and optional trust weight that influences result
     ranking. Peer queries have independent timeouts to prevent a slow peer from blocking the entire search.
+    Federation requests include an <code>X-AICP-Federation: true</code> header for peer identification.
+    The federation HTTP client enforces multiple SSRF protections: redirects are disabled
+    (<code>CheckRedirect</code> returns <code>http.ErrUseLastResponse</code>), domain names are validated
+    against path traversal and injection characters, and response bodies are capped at 1 MiB.
   </p>
   <div class="callout">
     <p><strong>Design Note:</strong> Federated ANS uses a pull model: nodes query peers on-demand rather than
@@ -1075,13 +1095,15 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
 
   <h3>7.3 Anti-Spam &amp; Rate Limiting</h3>
   <p>
-    The onboarding layer implements Redis-backed rate limiting to prevent abuse:
+    The onboarding layer implements Redis-backed rate limiting and anomaly detection to prevent abuse:
   </p>
   <ul>
-    <li><strong>Per-DID rate limit:</strong> Maximum onboarding attempts per DID per time window</li>
+    <li><strong>Per-DID rate limit:</strong> Maximum onboarding attempts per DID per time window, enforced via Redis counters with pipelined INCR + EXPIRE</li>
     <li><strong>Per-IP rate limit:</strong> Prevents distributed bot attacks from the same source</li>
     <li><strong>Trust-gated access:</strong> Services can set minimum trust score thresholds, blocking unknown or low-reputation agents</li>
     <li><strong>Session limits:</strong> Maximum concurrent onboarding sessions per agent</li>
+    <li><strong>Atomic anomaly detection:</strong> Session creation velocity is tracked via a Redis Lua script that atomically increments a counter and sets TTL on first creation, eliminating the TOCTOU race between INCR and EXPIRE. Agents exceeding the session-creation threshold within the detection window are flagged</li>
+    <li><strong>Cryptographic session IDs:</strong> Session identifiers use 8 bytes (64 bits) from <code>crypto/rand</code> encoded as hex (format: <code>sess_&lt;16-char-hex&gt;</code>), preventing session enumeration or prediction. Session ID format is validated at retrieval via regex to reject injection attempts</li>
   </ul>
 </section>
 
@@ -1183,22 +1205,27 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     A payment token is a JWS (JSON Web Signature) with EdDSA algorithm containing these claims:
   </p>
   <pre><code>{
-  "jti": "pt_a1b2c3d4e5f6g7h8",           // Unique token ID (replay prevention)
-  "iss": "did:aicp:8Kx2mPq4nR7tY5wJ#key-1", // Issuer (service DID + key ref)
-  "sub": "did:aicp:7Vf3xPqR2nK8mY4j:9Bw2c", // Subject (agent DID)
-  "aud": "did:aicp:8Kx2mPq4nR7tY5wJ",       // Audience (service DID)
-  "iat": 1711929600,                          // Issued at (Unix seconds)
-  "exp": 1711930500,                          // Expires (iat + 15 min)
+  "jti": "pt_3a7f9c2e4b8d1a6f0e5c3b9d7a2f4e8c", // Crypto-random token ID (16 bytes hex)
+  "iss": "did:aicp:8Kx2mPq4nR7tY5wJ#key-1",       // Issuer (service DID + key ref)
+  "sub": "did:aicp:7Vf3xPqR2nK8mY4j:9Bw2c",       // Subject (agent DID)
+  "aud": "did:aicp:8Kx2mPq4nR7tY5wJ",             // Audience (service DID)
+  "iat": 1711929600,                                // Issued at (Unix seconds)
+  "exp": 1711930500,                                // Expires (iat + 15 min)
   "aicp:payment": {
     "amount": { "value": "2500", "currency": "USD" },
     "maxAmount": { "value": "5000", "currency": "USD" },
     "purpose": "service-onboarding",
     "serviceCategory": "cloud",
     "adapterId": "stripe",
-    "nonce": "f8a3b2c1d0e9f8a7b6c5d4e3",
-    "idempotencyKey": "idem_x7y8z9a0b1c2d3e4"
+    "nonce": "8b4f2a7e1c9d3f6e0a5b8c7d4e2f1a9b", // Crypto-random (16 bytes hex)
+    "idempotencyKey": "a7f9c2e4b8d1a6f03a7f9c2e4b8d1a6f" // SHA-256 of JTI, truncated
   }
 }</code></pre>
+  <p>
+    Token identifiers (<code>jti</code>) and nonces are generated using <code>crypto/rand</code> (16 bytes
+    each), providing 128 bits of entropy. The idempotency key is derived as the first 32 characters of the
+    SHA-256 hash of the JTI, ensuring deterministic deduplication at the payment adapter level.
+  </p>
 
   <h3>8.3 Security Properties</h3>
   <p>The payment token design provides multiple layers of security:</p>
@@ -1206,8 +1233,8 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     <tr><th>Property</th><th>Mechanism</th></tr>
     <tr><td>Integrity</td><td>JWS EdDSA signature — any modification invalidates the token</td></tr>
     <tr><td>Replay prevention</td><td>Atomic <code>MarkTokenUsed</code> via PostgreSQL unique constraint — concurrent duplicates fail at the database level (error 23505), eliminating TOCTOU race conditions. Supplemented by Redis nonce cache and adapter-level <code>idempotencyKey</code>.</td></tr>
-    <tr><td>Time-bound</td><td>15-minute expiry window (<code>exp</code> claim)</td></tr>
-    <tr><td>Amount-bound</td><td>Exact amount in claims; maximum of 999,999,999.99; currency validated against ISO 4217 allowlist</td></tr>
+    <tr><td>Time-bound</td><td>15-minute expiry window (<code>exp</code> claim) with 30-second clock skew tolerance for distributed systems — tokens are considered valid until <code>exp + 30s</code>, accommodating NTP drift between nodes</td></tr>
+    <tr><td>Amount-bound</td><td>Defense-in-depth validation at the commerce layer: amount must be positive and &le; 999,999,999.99; currency validated against an allowlist of ISO 4217 codes (USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY) and recognized stablecoin tickers (USDC, USDT). Both the requested amount and optional max amount are independently validated</td></tr>
     <tr><td>Spending limits</td><td>Atomic <code>CheckAndRecordSpending</code> combines limit verification and recording in a single SQL CTE with <code>FOR UPDATE</code> row locking — prevents concurrent overspend across per-transaction, daily, and monthly limits</td></tr>
     <tr><td>Scope-bound</td><td>Purpose, service category, and audience restrict token use</td></tr>
     <tr><td>Idempotency</td><td><code>idempotencyKey</code> prevents duplicate charges at adapter level</td></tr>
@@ -1244,7 +1271,7 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
 
   <h3>8.5 Spending Controls</h3>
   <p>
-    Spending enforcement operates at three levels:
+    Spending enforcement operates at three levels, all enforced atomically:
   </p>
   <ol>
     <li><strong>Per-transaction limit:</strong> Maximum single payment amount (from delegation credential)</li>
@@ -1252,14 +1279,20 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     <li><strong>Monthly aggregate limit:</strong> Total spending in a calendar month</li>
   </ol>
   <p>
+    The <code>CheckAndRecordSpending</code> operation combines limit verification and recording in a
+    <strong>single SQL CTE with <code>FOR UPDATE</code> row locking</strong>, preventing concurrent requests
+    from overspending by racing past the limit check. This atomic design eliminates the TOCTOU window
+    that would exist if the check and record were separate operations.
+  </p>
+  <p>
     When a payment exceeds the <code>requiresApprovalAbove</code> threshold defined in the spending
-    authorization credential, the system enters an <strong>approval workflow</strong>:
+    authorization credential, the system enters a <strong>human approval workflow</strong>:
   </p>
   <ol>
-    <li>Payment is paused and a <code>PendingApproval</code> record is created</li>
-    <li>A <code>payment.approval_required</code> event is broadcast via WebSocket</li>
-    <li>The principal reviews and approves/denies via <code>POST /payment/approval/{id}/approve</code></li>
-    <li>On approval, payment execution resumes; on denial, the payment fails with <code>APPROVAL_DENIED</code></li>
+    <li>Payment is paused and a <code>PendingApproval</code> record is created (Redis-backed, 15-minute TTL)</li>
+    <li>A <code>payment.approval_required</code> event is broadcast via WebSocket to the principal's DID</li>
+    <li>The principal reviews and approves/denies via <code>POST /payment/approval/{id}/approve</code> or <code>/deny</code></li>
+    <li>On approval, payment execution resumes; on denial or TTL expiry, the payment fails with <code>APPROVAL_DENIED</code></li>
   </ol>
 
   <h3>8.6 Cryptographic Receipts</h3>
@@ -1533,7 +1566,14 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
   </ol>
   <p>
     Connection parameters: 256-event buffer per client, 4KB max message size, 10-second write timeout,
-    60-second pong timeout, 30-second ping interval.
+    60-second pong timeout, 30-second ping interval. Client IDs are generated with 16 bytes from
+    <code>crypto/rand</code> (128-bit entropy), ensuring they are unpredictable and collision-resistant.
+  </p>
+  <p>
+    <strong>DID-scoped event isolation:</strong> The WebSocket Hub enforces strict event filtering — events
+    with a non-empty <code>Subject</code> field are delivered only to clients whose authenticated DID matches
+    that Subject. System-wide events (empty Subject) are broadcast to all subscribers. This prevents agents
+    from observing payment, credential, or trust events belonging to other principals.
   </p>
 
   <h3>11.3 Event Distribution Architecture</h3>
@@ -1572,8 +1612,8 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     <tr><td>Credential forgery</td><td>All credentials are JWS-signed by the issuer; verification checks signature, expiry, and revocation status.</td></tr>
     <tr><td>Ledger tampering</td><td>Append-only blocks with RFC 6962-compliant Merkle trees (0x00 leaf prefix, 0x01 branch prefix for domain separation) and 2f+1 validator signatures. Block hash chain prevents retroactive modification.</td></tr>
     <tr><td>Man-in-the-middle</td><td>All transport over TLS. DID-Auth signatures provide end-to-end integrity independent of transport security.</td></tr>
-    <tr><td>Information leakage</td><td>Error responses sanitized via <code>ProtocolErrorResponse</code> — internal errors return generic "an internal error occurred", never exposing database details, stack traces, or file paths.</td></tr>
-    <tr><td>SSRF / Federation abuse</td><td>Domain validation rejects path traversal and special characters. Federation peer responses capped at 1 MiB via <code>io.LimitReader</code>.</td></tr>
+    <tr><td>Information leakage</td><td>Comprehensive error sanitization across all HTTP handlers. <code>ProtocolErrorResponse</code> returns generic "an internal error occurred" for non-protocol errors. Handler-level sanitization replaces <code>err.Error()</code> with generic messages (e.g., "DID not found", "credential verification failed") while logging full error details server-side via <code>slog.Warn</code>. Internal error details, database messages, stack traces, and file paths are never exposed to clients.</td></tr>
+    <tr><td>SSRF / Federation abuse</td><td>Domain validation rejects path traversal and special characters (slashes, colons, at-signs, question marks, fragments, double-dots). The federation HTTP client disables redirect following (<code>CheckRedirect</code> returns <code>http.ErrUseLastResponse</code>), preventing a compromised peer from redirecting requests to internal services (localhost, metadata endpoints, etc.). Peer responses capped at 1 MiB via <code>io.LimitReader</code>.</td></tr>
     <tr><td>WebSocket auth bypass</td><td>WebSocket upgrade requires <code>TicketAuth</code> configuration — returns 503 when unconfigured rather than silently allowing unauthenticated connections.</td></tr>
     <tr><td>Denial of service</td><td>Redis-backed rate limiting per DID and per IP. Trust score gating for onboarding. Session limits prevent resource exhaustion. Request body size capped at 1 MB.</td></tr>
     <tr><td>Validator collusion</td><td>2f+1 quorum requirement means at least two-thirds of validators must agree. Validator set managed by consortium governance.</td></tr>
@@ -1591,6 +1631,7 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     <li><strong>SHA-256:</strong> Used for document hashes, Merkle trees (with RFC 6962 domain separation), DID generation (truncated), block hashes, and receipt hashes.</li>
     <li><strong>JWS/EdDSA:</strong> Payment tokens use JSON Web Signature with EdDSA algorithm via <code>go-jose/v4</code>. Algorithm allowlisting enforces EdDSA only — no algorithm confusion attacks.</li>
     <li><strong>Constant-time comparison:</strong> All security-critical comparisons (challenge-response verification) use <code>crypto/subtle.ConstantTimeCompare</code> to prevent timing side-channel attacks.</li>
+    <li><strong>Cryptographic random identifiers:</strong> All security-sensitive identifiers use <code>crypto/rand</code>: payment token JTIs (16 bytes, 128-bit entropy), token nonces (16 bytes), onboarding session IDs (8 bytes, 64-bit entropy), and WebSocket client IDs (16 bytes, 128-bit entropy). No identifier is derived from predictable inputs such as timestamps, DIDs, or sequential counters.</li>
     <li><strong>Base58btc:</strong> Multibase encoding for public keys and signatures (compact, no ambiguous characters).</li>
   </ul>
   <p>
@@ -1607,6 +1648,8 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
     <li>Trust scores are computed from on-chain behavior, not off-chain personal data</li>
     <li>Payment receipts contain DIDs and amounts but no personal payment details (those are in the adapter layer)</li>
     <li>The protocol supports selective disclosure through Verifiable Presentations — agents reveal only the claims needed for a specific interaction</li>
+    <li>Error responses are comprehensively sanitized — internal error details, database messages, and stack traces are logged server-side via <code>slog</code> but never exposed to clients, preventing information leakage about system internals</li>
+    <li>WebSocket event delivery is DID-scoped — agents cannot observe events (payments, credentials, trust updates) belonging to other principals</li>
   </ul>
 </section>
 
@@ -1727,7 +1770,7 @@ did = "did:aicp:" + principalId + ":" + id  // Agent</code></pre>
   <h3>13.2 Technology Stack</h3>
   <table>
     <tr><th>Component</th><th>Technology</th><th>Rationale</th></tr>
-    <tr><td>Server</td><td>Go 1.22+, chi router</td><td>Single binary, goroutines, stdlib crypto, infrastructure standard</td></tr>
+    <tr><td>Server</td><td>Go 1.26+, chi router</td><td>Single binary, goroutines, stdlib crypto, infrastructure standard</td></tr>
     <tr><td>Database</td><td>PostgreSQL 16+ via pgx</td><td>JSONB for DID docs, full-text search for ANS, ACID for ledger</td></tr>
     <tr><td>Query generation</td><td>sqlc</td><td>Type-safe Go from SQL — no ORM overhead</td></tr>
     <tr><td>Cache/Pub-Sub</td><td>Redis 7+ via go-redis</td><td>Sub-ms rate limiting, session store, event distribution</td></tr>
@@ -1959,6 +2002,16 @@ aicp pay --to did:aicp:8Kx2... --amount 25.00 --currency USD</code></pre>
     with parallel peer queries and DID-based deduplication.</li>
     <li><strong>MCP server integration</strong> (Section 13.6): Built-in MCP server exposing 16 AICP tools
     over JSON-RPC 2.0 stdio, enabling any MCP-compatible AI agent to use AICP.</li>
+    <li><strong>Comprehensive security hardening</strong> (Section 12): Full JWS signature verification
+    in DID-Auth middleware with <code>DIDKeyResolver</code> interface (fail-closed), atomic double-spend
+    prevention via PostgreSQL unique constraints, atomic spending limit enforcement via CTE with
+    <code>FOR UPDATE</code> locking, cryptographic random identifiers for all security-sensitive tokens
+    (JTI, nonce, session IDs, client IDs), comprehensive error sanitization across all handlers with
+    <code>slog</code>-based server-side logging, SSRF protection with redirect prevention and domain
+    validation in federation, DID-scoped WebSocket event isolation, constant-time challenge verification,
+    RFC 6962 Merkle tree domain separation, clock skew tolerance for distributed token validation,
+    defense-in-depth currency/amount validation at the commerce layer, and human approval workflows
+    for high-value transactions.</li>
   </ul>
 
   <h3>15.2 Protocol Extensions (Planned)</h3>
@@ -2011,6 +2064,9 @@ aicp pay --to did:aicp:8Kx2... --amount 25.00 --currency USD</code></pre>
     few lines of code. The Kubernetes operator automates consortium lifecycle management. Recent additions —
     multi-DID resolution, federated ANS, capability-based access control, an OIDC bridge, and a built-in
     MCP server — further strengthen AICP's interoperability with existing identity systems and agent frameworks.
+    The implementation has undergone extensive security hardening, with atomic double-spend prevention,
+    cryptographic random identifiers, comprehensive error sanitization, SSRF protections, DID-scoped event
+    isolation, and defense-in-depth validation across all protocol layers.
   </p>
   <p>
     As the agent economy grows from millions to billions of autonomous transactions, the need for
