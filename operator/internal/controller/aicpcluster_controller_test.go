@@ -51,7 +51,21 @@ var _ = Describe("AICPCluster Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: aicpv1alpha1.AICPClusterSpec{
+						Replicas:       1,
+						ValidatorCount: 1,
+						Image:          "ghcr.io/aicp-protocol/aicp-server:test",
+						PostgreSQL: aicpv1alpha1.PostgreSQLConfig{
+							Host: "postgres.default.svc",
+							Port: 5432,
+							SecretRef: aicpv1alpha1.SecretReference{
+								Name: "test-pg-secret",
+							},
+						},
+						Redis: aicpv1alpha1.RedisConfig{
+							Address: "redis.default.svc:6379",
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

@@ -1,10 +1,12 @@
 package mcp
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -36,24 +38,24 @@ func sendRequest(t *testing.T, s *Server, method string, id int, params any) Res
 	input, _ := json.Marshal(req)
 	input = append(input, '\n')
 
-	var output bytes.Buffer
-	s.SetIO(bytes.NewReader(input), &output)
+	pr, pw := io.Pipe()
+	s.SetIO(bytes.NewReader(input), pw)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
 		_ = s.Run(ctx)
+		pw.Close()
 	}()
 
-	// Wait for response.
-	for output.Len() == 0 {
-		// Busy wait (test only).
-	}
+	// Read the first complete JSON response line from the pipe (blocks until available).
+	scanner := bufio.NewScanner(pr)
+	require.True(t, scanner.Scan(), "expected a response line from MCP server")
 	cancel()
 
 	var resp Response
-	require.NoError(t, json.Unmarshal(output.Bytes(), &resp))
+	require.NoError(t, json.Unmarshal(scanner.Bytes(), &resp))
 	return resp
 }
 
@@ -200,19 +202,21 @@ func TestServer_ResourcesRead(t *testing.T) {
 func TestServer_ParseError(t *testing.T) {
 	s := newTestServer()
 
-	var output bytes.Buffer
-	s.SetIO(strings.NewReader("invalid json\n"), &output)
+	pr, pw := io.Pipe()
+	s.SetIO(strings.NewReader("invalid json\n"), pw)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		_ = s.Run(ctx)
+		pw.Close()
 	}()
-	for output.Len() == 0 {
-	}
+
+	scanner := bufio.NewScanner(pr)
+	require.True(t, scanner.Scan(), "expected error response")
 	cancel()
 
 	var resp Response
-	require.NoError(t, json.Unmarshal(output.Bytes(), &resp))
+	require.NoError(t, json.Unmarshal(scanner.Bytes(), &resp))
 	assert.NotNil(t, resp.Error)
 	assert.Equal(t, CodeParseError, resp.Error.Code)
 }

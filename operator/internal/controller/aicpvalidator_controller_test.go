@@ -33,38 +33,82 @@ import (
 var _ = Describe("AICPValidator Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
+		const clusterName = "test-validator-cluster"
 
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
+		}
+		clusterNamespacedName := types.NamespacedName{
+			Name:      clusterName,
+			Namespace: "default",
 		}
 		aicpvalidator := &aicpv1alpha1.AICPValidator{}
 
 		BeforeEach(func() {
+			By("creating the parent AICPCluster")
+			cluster := &aicpv1alpha1.AICPCluster{}
+			err := k8sClient.Get(ctx, clusterNamespacedName, cluster)
+			if err != nil && errors.IsNotFound(err) {
+				cluster = &aicpv1alpha1.AICPCluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      clusterName,
+						Namespace: "default",
+					},
+					Spec: aicpv1alpha1.AICPClusterSpec{
+						Replicas:       1,
+						ValidatorCount: 1,
+						Image:          "ghcr.io/aicp-protocol/aicp-server:test",
+						PostgreSQL: aicpv1alpha1.PostgreSQLConfig{
+							Host: "postgres.default.svc",
+							Port: 5432,
+							SecretRef: aicpv1alpha1.SecretReference{
+								Name: "test-pg-secret",
+							},
+						},
+						Redis: aicpv1alpha1.RedisConfig{
+							Address: "redis.default.svc:6379",
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, cluster)).To(Succeed())
+			}
+
 			By("creating the custom resource for the Kind AICPValidator")
-			err := k8sClient.Get(ctx, typeNamespacedName, aicpvalidator)
+			err = k8sClient.Get(ctx, typeNamespacedName, aicpvalidator)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &aicpv1alpha1.AICPValidator{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: aicpv1alpha1.AICPValidatorSpec{
+						ClusterRef: clusterName,
+						KeySecretRef: aicpv1alpha1.SecretReference{
+							Name: "test-validator-key",
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &aicpv1alpha1.AICPValidator{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Cleanup the specific resource instance AICPValidator")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+			cluster := &aicpv1alpha1.AICPCluster{}
+			err = k8sClient.Get(ctx, clusterNamespacedName, cluster)
+			if err == nil {
+				By("Cleanup the parent AICPCluster")
+				Expect(k8sClient.Delete(ctx, cluster)).To(Succeed())
+			}
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
