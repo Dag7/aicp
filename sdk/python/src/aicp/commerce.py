@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
-from aicp.transport import Transport
 from aicp.types import (
     MoneyAmount,
     PaymentExecuteResponse,
     PaymentStatusResponse,
     PaymentTokenResponse,
 )
+
+if TYPE_CHECKING:
+    from aicp.transport import Transport
 
 
 class CommerceManager:

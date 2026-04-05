@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable
 
-from aicp.types import ANSRecord, ANSServiceInfo, ANSOnboardingInfo, ANSAuthInfo
+from aicp.types import ANSAuthInfo, ANSOnboardingInfo, ANSRecord, ANSServiceInfo
 
 
 @dataclass

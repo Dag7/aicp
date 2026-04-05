@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aicp.crypto import create_proof
-from aicp.transport import Transport
 from aicp.types import (
     AuthorizeResponse,
     DIDAuthResponse,
     NegotiateResponse,
     OnboardInitResponse,
-    OnboardingState,
     ProvisionResponse,
     VerifiablePresentation,
 )
+
+if TYPE_CHECKING:
+    from aicp.transport import Transport
 
 
 class OnboardingManager:

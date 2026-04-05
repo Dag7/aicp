@@ -163,12 +163,12 @@ func (m *mockLedgerBackend) CheckAndRecordSpending(context.Context, string, aicp
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
-func validANSRecord(did string) aicp.ANSRecord {
+func validANSRecord() aicp.ANSRecord {
 	return aicp.ANSRecord{
 		AICPVersion: "1.0",
 		Service: aicp.ANSServiceInfo{
 			Name:     "Test Service",
-			DID:      did,
+			DID:      "did:aicp:svc1",
 			Category: []string{"compute"},
 		},
 		Onboarding: aicp.ANSOnboardingInfo{
@@ -185,13 +185,13 @@ func validANSRecord(did string) aicp.ANSRecord {
 // ─── ANS Record Validation Tests ──────────────────────────────────────────────
 
 func TestValidateANSRecord_Valid(t *testing.T) {
-	record := validANSRecord("did:aicp:svc1")
+	record := validANSRecord()
 	err := validateANSRecord(record)
 	assert.NoError(t, err)
 }
 
 func TestValidateANSRecord_TableDriven(t *testing.T) {
-	base := validANSRecord("did:aicp:svc1")
+	base := validANSRecord()
 
 	tests := []struct {
 		name   string
@@ -248,7 +248,7 @@ func TestANSManager_Register(t *testing.T) {
 	am := NewANSManager(backend)
 	ctx := context.Background()
 
-	record := validANSRecord("did:aicp:svc1")
+	record := validANSRecord()
 	err := am.Register(ctx, record)
 	require.NoError(t, err)
 
@@ -281,7 +281,7 @@ func TestANSManager_Delete(t *testing.T) {
 	am := NewANSManager(backend)
 	ctx := context.Background()
 
-	record := validANSRecord("did:aicp:svc1")
+	record := validANSRecord()
 	err := am.Register(ctx, record)
 	require.NoError(t, err)
 

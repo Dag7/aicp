@@ -46,7 +46,7 @@ func sendRequest(t *testing.T, s *Server, method string, id int, params any) Res
 
 	go func() {
 		_ = s.Run(ctx)
-		pw.Close()
+		_ = pw.Close()
 	}()
 
 	// Read the first complete JSON response line from the pipe (blocks until available).
@@ -208,7 +208,7 @@ func TestServer_ParseError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		_ = s.Run(ctx)
-		pw.Close()
+		_ = pw.Close()
 	}()
 
 	scanner := bufio.NewScanner(pr)
@@ -257,7 +257,7 @@ func TestAICPToolRegistry_DIDResolve_Integration(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/aicp/v1/did/did:aicp:test123", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"success": true,
 			"data": map[string]any{
 				"didDocument": map[string]any{

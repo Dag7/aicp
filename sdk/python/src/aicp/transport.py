@@ -68,10 +68,10 @@ class Transport:
 
         try:
             resp = await self._client.request(method, url, **kwargs)
-        except httpx.TimeoutException:
-            raise AICPError(0, "TIMEOUT", f"request timed out after {self._timeout}s")
+        except httpx.TimeoutException as e:
+            raise AICPError(0, "TIMEOUT", f"request timed out after {self._timeout}s") from e
         except httpx.HTTPError as e:
-            raise AICPError(0, "NETWORK_ERROR", str(e))
+            raise AICPError(0, "NETWORK_ERROR", str(e)) from e
 
         data = resp.json()
         api_resp = APIResponse.model_validate(data)

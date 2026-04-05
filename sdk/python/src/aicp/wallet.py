@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
-import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from urllib.parse import quote, unquote
@@ -67,10 +67,8 @@ class FileWalletStorage(WalletStorage):
 
     async def delete(self, key: str) -> None:
         path = self._base / quote(key, safe="")
-        try:
+        with contextlib.suppress(FileNotFoundError):
             path.unlink()
-        except FileNotFoundError:
-            pass
 
     async def list_keys(self, prefix: str) -> list[str]:
         if not self._base.exists():

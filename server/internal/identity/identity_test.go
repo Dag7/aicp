@@ -15,7 +15,6 @@ package identity
 
 import (
 	"context"
-	"crypto/ed25519"
 	"strings"
 	"sync"
 	"testing"
@@ -839,5 +838,5 @@ func TestBuildPrincipalDocument_MultibaseKey(t *testing.T) {
 	mb := doc.VerificationMethod[0].PublicKeyMultibase
 	decoded, err := crypto.PublicKeyFromMultibase(mb)
 	require.NoError(t, err)
-	assert.Equal(t, ed25519.PublicKey(kp.PublicKey), decoded)
+	assert.Equal(t, kp.PublicKey, decoded)
 }

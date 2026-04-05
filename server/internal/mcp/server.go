@@ -352,5 +352,7 @@ func (s *Server) writeResponse(resp Response) {
 		s.logger.Error("failed to marshal response", "error", err)
 		return
 	}
-	fmt.Fprintf(s.out, "%s\n", data)
+	if _, err := fmt.Fprintf(s.out, "%s\n", data); err != nil {
+		s.logger.Error("failed to write response", "error", err)
+	}
 }

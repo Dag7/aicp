@@ -178,7 +178,7 @@ func TestDIDWebResolver_Resolve(t *testing.T) {
 
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(doc)
+		_ = json.NewEncoder(w).Encode(doc)
 	}))
 	defer server.Close()
 
@@ -232,7 +232,7 @@ func TestDIDWebResolver_Resolve_IDMismatch(t *testing.T) {
 
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(doc)
+		_ = json.NewEncoder(w).Encode(doc)
 	}))
 	defer server.Close()
 

@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import nacl.signing
@@ -99,7 +99,10 @@ def agent_did(principal_pub_key: bytes, agent_pub_key: bytes) -> str:
 
 
 def parse_did(did: str) -> dict[str, str]:
-    """Parse a did:aicp DID. Returns dict with 'method', 'principal_id', and optionally 'agent_id'."""
+    """Parse a did:aicp DID.
+
+    Returns dict with 'method', 'principal_id', and optionally 'agent_id'.
+    """
     parts = did.split(":")
     if len(parts) < 3 or parts[0] != "did" or parts[1] != "aicp":
         raise ValueError(f"invalid AICP DID: {did}")
@@ -152,7 +155,7 @@ def create_proof(
     proof_value = sign_json(data, private_key)
     return Proof(
         type="Ed25519Signature2020",
-        created=datetime.now(timezone.utc).isoformat(),
+        created=datetime.now(UTC).isoformat(),
         verificationMethod=verification_method_id,
         proofPurpose=purpose,
         proofValue=proof_value,

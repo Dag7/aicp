@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import httpx
 
-from aicp.transport import Transport
 from aicp.types import ANSRecord
+
+if TYPE_CHECKING:
+    from aicp.transport import Transport
 
 
 class DiscoveryManager:

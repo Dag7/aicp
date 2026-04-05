@@ -258,7 +258,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 					return
 				}
 
-					// Generate cryptographically random client ID to prevent prediction attacks.
+				// Generate cryptographically random client ID to prevent prediction attacks.
 				var clientIDBytes [16]byte
 				if _, err := rand.Read(clientIDBytes[:]); err != nil {
 					cfg.Logger.Error("failed to generate client ID", "error", err)

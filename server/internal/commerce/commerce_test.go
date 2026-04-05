@@ -870,21 +870,21 @@ func TestTokenValidator_SanitizedErrors(t *testing.T) {
 
 	// Forbidden patterns that should never appear in user-facing validation errors.
 	sensitivePatterns := []string{
-		"/Users/",                 // local filesystem paths
-		"/home/",                  // Linux home paths
-		"goroutine",              // stack traces
-		"runtime.",               // Go runtime internals
-		"panic",                  // panic traces
-		"PRIVATE KEY",            // key material
-		"ed25519",                // key algorithm internals
-		"0x",                     // memory addresses
-		".go:",                   // source file references
+		"/Users/",     // local filesystem paths
+		"/home/",      // Linux home paths
+		"goroutine",   // stack traces
+		"runtime.",    // Go runtime internals
+		"panic",       // panic traces
+		"PRIVATE KEY", // key material
+		"ed25519",     // key algorithm internals
+		"0x",          // memory addresses
+		".go:",        // source file references
 	}
 
 	tests := []struct {
-		name     string
-		token    string
-		pubKey   string
+		name   string
+		token  string
+		pubKey string
 	}{
 		{
 			name:   "malformed token",

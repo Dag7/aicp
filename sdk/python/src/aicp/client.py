@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aicp.commerce import CommerceManager
 from aicp.crypto import (
@@ -17,15 +17,17 @@ from aicp.discovery import DiscoveryManager
 from aicp.identity import IdentityManager
 from aicp.onboarding import OnboardingManager
 from aicp.transport import Transport
-from aicp.types import (
-    ANSRecord,
-    MoneyAmount,
-    PaymentExecuteResponse,
-    VerifiableCredential,
-    VerifiablePresentation,
-    VerifyResponse,
-)
 from aicp.wallet import CredentialWallet, MemoryWalletStorage, WalletStorage
+
+if TYPE_CHECKING:
+    from aicp.types import (
+        ANSRecord,
+        MoneyAmount,
+        PaymentExecuteResponse,
+        VerifiableCredential,
+        VerifiablePresentation,
+        VerifyResponse,
+    )
 
 
 class AICPAgent:

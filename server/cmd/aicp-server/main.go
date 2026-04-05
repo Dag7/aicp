@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -172,7 +171,7 @@ func run() error {
 	}
 	validatorDID := validator.DID
 
-	consensus := ledger.NewConsensusEngine(backend, validatorDID, ed25519.PrivateKey(serverKP.PrivateKey), logger)
+	consensus := ledger.NewConsensusEngine(backend, validatorDID, serverKP.PrivateKey, logger)
 	if err := consensus.RefreshValidators(ctx); err != nil {
 		return fmt.Errorf("refreshing validators: %w", err)
 	}

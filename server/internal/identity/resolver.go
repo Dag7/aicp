@@ -4,7 +4,6 @@ package identity
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -118,7 +117,7 @@ func (r *DIDKeyResolver) Resolve(_ context.Context, did string) (*aicp.DIDResolu
 				ID:                 keyID,
 				Type:               "Ed25519VerificationKey2020",
 				Controller:         did,
-				PublicKeyMultibase: crypto.PublicKeyMultibase(ed25519.PublicKey(pubKey)),
+				PublicKeyMultibase: crypto.PublicKeyMultibase(pubKey),
 			},
 		},
 		Authentication:  []string{keyID},

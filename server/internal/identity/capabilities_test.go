@@ -80,7 +80,7 @@ func TestMatchesCapability_WildcardInList(t *testing.T) {
 
 // ─── CapabilityChecker (integration with DelegationVerifier) ────────────────
 
-func setupCapabilityChecker(t *testing.T) (*CapabilityChecker, *mockLedgerBackend, string) {
+func setupCapabilityChecker(t *testing.T) (*CapabilityChecker, string) {
 	t.Helper()
 	ctx := context.Background()
 	backend := newMockLedgerBackend()
@@ -124,11 +124,11 @@ func setupCapabilityChecker(t *testing.T) (*CapabilityChecker, *mockLedgerBacken
 	verifier := NewDelegationVerifier(backend, didMgr, credMgr)
 	checker := NewCapabilityChecker(verifier)
 
-	return checker, backend, agentDID
+	return checker, agentDID
 }
 
 func TestCapabilityChecker_HasCapability(t *testing.T) {
-	checker, _, agentDID := setupCapabilityChecker(t)
+	checker, agentDID := setupCapabilityChecker(t)
 	ctx := context.Background()
 
 	has, err := checker.HasCapability(ctx, agentDID, aicp.CapabilityPaymentRead)
@@ -141,7 +141,7 @@ func TestCapabilityChecker_HasCapability(t *testing.T) {
 }
 
 func TestCapabilityChecker_HasCapability_Denied(t *testing.T) {
-	checker, _, agentDID := setupCapabilityChecker(t)
+	checker, agentDID := setupCapabilityChecker(t)
 	ctx := context.Background()
 
 	has, err := checker.HasCapability(ctx, agentDID, aicp.CapabilityCredentialIssue)
@@ -150,7 +150,7 @@ func TestCapabilityChecker_HasCapability_Denied(t *testing.T) {
 }
 
 func TestCapabilityChecker_HasCapability_InvalidAgent(t *testing.T) {
-	checker, _, _ := setupCapabilityChecker(t)
+	checker, _ := setupCapabilityChecker(t)
 	ctx := context.Background()
 
 	// Nonexistent DID returns false (delegation chain invalid), not an error.
@@ -160,7 +160,7 @@ func TestCapabilityChecker_HasCapability_InvalidAgent(t *testing.T) {
 }
 
 func TestCapabilityChecker_ListCapabilities(t *testing.T) {
-	checker, _, agentDID := setupCapabilityChecker(t)
+	checker, agentDID := setupCapabilityChecker(t)
 	ctx := context.Background()
 
 	caps, err := checker.ListCapabilities(ctx, agentDID)
@@ -169,7 +169,7 @@ func TestCapabilityChecker_ListCapabilities(t *testing.T) {
 }
 
 func TestCapabilityChecker_ListCapabilities_InvalidAgent(t *testing.T) {
-	checker, _, _ := setupCapabilityChecker(t)
+	checker, _ := setupCapabilityChecker(t)
 	ctx := context.Background()
 
 	// Nonexistent DID returns nil capabilities (delegation chain invalid).
@@ -179,7 +179,7 @@ func TestCapabilityChecker_ListCapabilities_InvalidAgent(t *testing.T) {
 }
 
 func TestCapabilityChecker_HasCapabilityForResource(t *testing.T) {
-	checker, _, agentDID := setupCapabilityChecker(t)
+	checker, agentDID := setupCapabilityChecker(t)
 	ctx := context.Background()
 
 	// Should match via simple capability list (backward compatible).

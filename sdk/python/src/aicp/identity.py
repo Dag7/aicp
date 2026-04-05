@@ -2,23 +2,24 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aicp.crypto import (
     KeyPair,
+    agent_did,
     create_proof,
     generate_key_pair,
     principal_did,
-    agent_did,
 )
-from aicp.transport import Transport
 from aicp.types import (
-    DIDResolutionResult,
     Proof,
     VerifiableCredential,
     VerifiablePresentation,
     VerifyResponse,
 )
+
+if TYPE_CHECKING:
+    from aicp.transport import Transport
 
 
 class IdentityManager:
@@ -33,7 +34,10 @@ class IdentityManager:
         return kp, principal_did(kp.public_key)
 
     def generate_agent(self, principal_kp: KeyPair) -> tuple[KeyPair, str, str]:
-        """Generate a new agent identity under a principal. Returns (kp, agent_did, principal_did)."""
+        """Generate a new agent identity under a principal.
+
+        Returns (kp, agent_did, principal_did).
+        """
         agent_kp = generate_key_pair()
         p_did = principal_did(principal_kp.public_key)
         a_did = agent_did(principal_kp.public_key, agent_kp.public_key)
