@@ -86,6 +86,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v7
         with:
           version: "v2.1.6"
+          install-mode: goinstall
           working-directory: server
 
   typescript-sdk:
